@@ -100,6 +100,22 @@ async function exportMarkdown() {
   return fs.readFileSync(dest, 'utf8');
 }
 
+async function readSummary(key) {
+  return worker.evaluate(async (storageKey) => {
+    const stored = await chrome.storage.local.get(storageKey);
+    return stored[storageKey]?.summary ?? null;
+  }, key);
+}
+
+async function activateTab(target) {
+  const id = Number(await target.evaluate(() => document.documentElement.dataset.whnTab || ''));
+  expect(id).toBeGreaterThan(0);
+  await worker.evaluate(async (tabId) => {
+    await chrome.tabs.update(tabId, { active: true });
+  }, id);
+  await target.bringToFront();
+}
+
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
@@ -367,4 +383,166 @@ test('keeps the full summary when typing quickly then blurring', async () => {
   await panel.locator('#title').click();
   await panel.reload();
   await expect(panel.locator('#summary')).toHaveValue(FAST);
+});
+
+test('side panel follows navigation and active tab changes without reloading', async () => {
+  const pageA = `${fixture.url}?doc=a`;
+  const pageB = `${fixture.url}?doc=b`;
+  const keyA = pageKey(pageA);
+  const keyB = pageKey(pageB);
+  await worker.evaluate(async ({ keyA: aKey, keyB: bKey, quoteA, quoteB, commentB }) => {
+    const record = (key, summary, highlights) => ({ url: key, title: '', summary, highlights });
+    await chrome.storage.local.set({
+      [aKey]: record(aKey, '摘要甲', [{
+        id: 'page-a',
+        text: quoteA,
+        prefix: '',
+        suffix: '',
+        comment: '',
+        draft: null,
+        createdAt: 1,
+        pos: 1,
+        anchored: true,
+      }]),
+      [bKey]: record(bKey, '摘要乙', [{
+        id: 'page-b',
+        text: quoteB,
+        prefix: '',
+        suffix: '',
+        comment: commentB,
+        draft: null,
+        createdAt: 2,
+        pos: 2,
+        anchored: true,
+      }]),
+    });
+  }, { keyA, keyB, quoteA: QUOTE_1, quoteB: QUOTE_3, commentB: COMMENT_3 });
+
+  await article.goto(pageA);
+  await waitReady(article);
+  const tabId = await article.evaluate(() => document.documentElement.dataset.whnTab);
+  await panel.goto(panelUrl(tabId, pageA));
+  await panel.evaluate(() => { window.__whnAlive = 'panel'; });
+  await expect(panel.locator('#summary')).toHaveValue('摘要甲');
+  await expect(panel.locator('.quote', { hasText: QUOTE_1 })).toBeVisible();
+  await expect(panel.locator('#counts')).toHaveText('1 条划线 · 0 条评论');
+
+  await activateTab(article);
+  await article.goto(pageB);
+  await waitReady(article);
+  await expect(panel.locator('#summary')).toHaveValue('摘要乙');
+  await expect(panel.locator('.quote', { hasText: QUOTE_3 })).toBeVisible();
+  await expect(panel.locator('.quote', { hasText: QUOTE_1 })).toHaveCount(0);
+  await expect(panel.locator('.comment', { hasText: COMMENT_3 })).toBeVisible();
+  await expect(panel.locator('#counts')).toHaveText('1 条划线 · 1 条评论');
+  expect(await panel.evaluate(() => window.__whnAlive)).toBe('panel');
+
+  const other = await context.newPage();
+  try {
+    await other.goto(pageA);
+    await waitReady(other);
+    await activateTab(other);
+    await expect(panel.locator('#summary')).toHaveValue('摘要甲');
+    await expect(panel.locator('.quote', { hasText: QUOTE_1 })).toBeVisible();
+    await expect(panel.locator('.quote', { hasText: QUOTE_3 })).toHaveCount(0);
+    await expect(panel.locator('#counts')).toHaveText('1 条划线 · 0 条评论');
+    expect(await panel.evaluate(() => window.__whnAlive)).toBe('panel');
+
+    await activateTab(article);
+    await expect(panel.locator('#summary')).toHaveValue('摘要乙');
+    await expect(panel.locator('.quote', { hasText: QUOTE_3 })).toBeVisible();
+    await expect(panel.locator('#counts')).toHaveText('1 条划线 · 1 条评论');
+    expect(await panel.evaluate(() => window.__whnAlive)).toBe('panel');
+  } finally {
+    await other.close();
+  }
+});
+
+test('keeps summary focus and the full text while storage changes during fast typing', async () => {
+  const TEXT = 'Highlight notes summary text';
+  const summaryUrl = `${fixture.url}?doc=summary`;
+  const key = pageKey(summaryUrl);
+  await worker.evaluate(async (storageKey) => {
+    await chrome.storage.local.remove(storageKey);
+  }, key);
+
+  await article.goto(summaryUrl);
+  await waitReady(article);
+  const tabId = await article.evaluate(() => document.documentElement.dataset.whnTab);
+  await panel.goto(panelUrl(tabId, summaryUrl));
+  await panel.evaluate(() => { window.__whnAlive = 'summary'; });
+
+  await panel.locator('#summary').click();
+  await panel.evaluate(() => {
+    const summary = document.querySelector('#summary');
+    window.__whnBlurred = false;
+    summary.addEventListener('blur', () => { window.__whnBlurred = true; });
+  });
+
+  const churn = worker.evaluate(async (storageKey) => {
+    for (let n = 1; n <= 6; n += 1) {
+      const stored = await chrome.storage.local.get(storageKey);
+      const record = stored[storageKey] || {
+        url: storageKey,
+        title: '',
+        summary: '',
+        highlights: [],
+      };
+      const highlights = [...(record.highlights || []), {
+        id: `concurrent-${n}`,
+        text: `并发划线${n}`,
+        prefix: '',
+        suffix: '',
+        comment: '',
+        draft: null,
+        createdAt: n,
+        pos: n,
+        anchored: true,
+      }];
+      await chrome.storage.local.set({
+        [storageKey]: { ...record, url: storageKey, highlights },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+  }, key);
+
+  await panel.keyboard.type(TEXT, { delay: 0 });
+  await churn;
+
+  expect(await panel.evaluate(() => document.activeElement === document.querySelector('#summary'))).toBe(true);
+  expect(await panel.evaluate(() => window.__whnBlurred)).toBe(false);
+  await expect(panel.locator('#summary')).toHaveValue(TEXT);
+  await expect(panel.locator('.quote', { hasText: '并发划线1' })).toBeVisible();
+  await expect.poll(() => readSummary(key)).toBe(TEXT);
+
+  await worker.evaluate(async (storageKey) => {
+    const stored = await chrome.storage.local.get(storageKey);
+    const record = stored[storageKey] || {
+      url: storageKey,
+      title: '',
+      summary: '',
+      highlights: [],
+    };
+    const highlights = [...(record.highlights || []), {
+      id: 'concurrent-final',
+      text: '并发划线终',
+      prefix: '',
+      suffix: '',
+      comment: '',
+      draft: null,
+      createdAt: Date.now(),
+      pos: 100,
+      anchored: true,
+    }];
+    await chrome.storage.local.set({
+      [storageKey]: { ...record, url: storageKey, summary: '', highlights },
+    });
+  }, key);
+
+  expect(await panel.evaluate(() => document.activeElement === document.querySelector('#summary'))).toBe(true);
+  expect(await panel.evaluate(() => window.__whnBlurred)).toBe(false);
+  await expect(panel.locator('#summary')).toHaveValue(TEXT);
+  await expect(panel.locator('.quote', { hasText: '并发划线终' })).toBeVisible();
+  await expect.poll(() => readSummary(key)).toBe(TEXT);
+  expect(await panel.evaluate(() => window.__whnAlive)).toBe('summary');
 });
