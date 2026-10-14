@@ -4,7 +4,8 @@ import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const zipPath = path.join(root, 'dist', 'web-highlight-notes-v0.1.0.zip');
+const version = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version;
+const zipPath = path.join(root, 'dist', `web-highlight-notes-v${version}.zip`);
 
 function crc32(buffer) {
   let crc = 0xffffffff;

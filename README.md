@@ -1,6 +1,6 @@
 # web-highlight-notes
 
-在网页上划线、写评论，并用 Chrome 侧边栏汇总、导出 Markdown 的扩展（Manifest V3，版本 0.1.0）。
+在网页上划线、写评论，并用 Chrome 侧边栏汇总、导出 Markdown 的扩展（Manifest V3，版本 0.1.1）。
 
 ## 功能
 
@@ -15,7 +15,7 @@
 
 ## 安装
 
-先运行 `npm run build`，得到 `dist/web-highlight-notes-v0.1.0.zip`。
+先运行 `npm run build`，得到 `dist/web-highlight-notes-v0.1.1.zip`。
 
 先解压 zip → 打开 chrome://extensions → 开启「开发者模式」 → 点击「加载已解压的扩展程序」选择解压后的目录。
 
@@ -40,4 +40,4 @@ npm run build
 
 - `npm test`：锚定（含重复文本消歧、原文改变后失败）和 Markdown 导出的单元测试。
 - `npm run e2e`：Playwright 加载未打包扩展，对本地文章页跑端到端场景。需要图形界面；没有显示器时用 `xvfb-run`。
-- `npm run build`：生成 `dist/web-highlight-notes-v0.1.0.zip`，压缩包根目录就是 `manifest.json`。
+- `npm run build`：生成 `dist/web-highlight-notes-v0.1.1.zip`，压缩包根目录就是 `manifest.json`。

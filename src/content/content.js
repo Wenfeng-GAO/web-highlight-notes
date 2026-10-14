@@ -30,6 +30,14 @@ function isEditableNode(node) {
 }
 
 function isEditableSelection(selection) {
+  // Selections inside <input>/<textarea> report the parent element as anchor in
+  // Chrome, so also check the focused element.
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+    const anchor = elementFromNode(selection.anchorNode);
+    const hasTextSelection = active.selectionStart != null && active.selectionStart !== active.selectionEnd;
+    if (hasTextSelection && anchor && (anchor === active || anchor.contains(active))) return true;
+  }
   return isEditableNode(selection.anchorNode) || isEditableNode(selection.focusNode);
 }
 

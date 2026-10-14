@@ -232,6 +232,30 @@ test('highlights, comments, and summary survive a reload', async () => {
   await expect.poll(() => article.evaluate(() => window.scrollY)).toBeGreaterThan(200);
 });
 
+test('does not show the toolbar for selections in input, textarea, or contenteditable', async () => {
+  for (const selector of ['#field', '#area']) {
+    await article.locator(selector).scrollIntoViewIfNeeded();
+    await article.locator(selector).evaluate((element) => {
+      element.focus();
+      element.setSelectionRange(0, 6);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+    });
+    await article.waitForTimeout(250);
+    await expect(highlightButton(article), selector).toBeHidden();
+    await article.keyboard.press('Shift+ArrowRight');
+    await article.waitForTimeout(250);
+    await expect(highlightButton(article), `${selector} keyboard`).toBeHidden();
+  }
+  await article.locator('#edit').click();
+  await selectText(article, '#edit', '可编辑区域的文字');
+  await article.waitForTimeout(250);
+  await expect(highlightButton(article)).toBeHidden();
+  await article.keyboard.press('Shift+ArrowLeft');
+  await article.waitForTimeout(250);
+  await expect(highlightButton(article)).toBeHidden();
+  await article.evaluate(() => { document.activeElement?.blur(); window.getSelection().removeAllRanges(); });
+});
+
 test('exports markdown in the documented format', async () => {
   const markdown = await exportMarkdown();
   const source = pageKey(fixture.url);

@@ -64,6 +64,13 @@ function renderList() {
     item.tabIndex = 0;
     item.setAttribute('role', 'button');
 
+    if (highlight.anchored === false) {
+      const warn = document.createElement('div');
+      warn.className = 'warn';
+      warn.textContent = '⚠ 未定位';
+      item.appendChild(warn);
+    }
+
     const quote = document.createElement('div');
     quote.className = 'quote';
     quote.textContent = highlight.text || '';
@@ -74,12 +81,6 @@ function renderList() {
       comment.className = 'comment';
       comment.textContent = highlight.comment;
       item.appendChild(comment);
-    }
-    if (highlight.anchored === false) {
-      const warn = document.createElement('div');
-      warn.className = 'warn';
-      warn.textContent = '⚠ 未定位';
-      item.appendChild(warn);
     }
     item.addEventListener('click', () => focusHighlight(highlight.id));
     item.addEventListener('keydown', (event) => {

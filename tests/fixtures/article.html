@@ -19,7 +19,7 @@
       p { margin: 16px 0; }
       .spacer { height: 1400px; }
       .controls { max-width: 720px; margin: 0 auto 80px; padding: 0 24px; }
-      textarea, #edit {
+      input, textarea, #edit {
         display: block;
         width: 100%;
         margin: 8px 0 16px;
@@ -38,6 +38,8 @@
     </article>
     <section class="controls">
       <h2>不应出现工具条</h2>
+      <label for="field">输入框</label>
+      <input id="field" type="text" value="输入框里的文字不可划线" />
       <label for="area">文本域</label>
       <textarea id="area">文本域里的文字不可划线</textarea>
       <div id="edit" contenteditable="true">可编辑区域的文字不可划线</div>
