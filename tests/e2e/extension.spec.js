@@ -339,3 +339,32 @@ test('deletes a highlight from the bubble and keeps it gone after reload', async
   await expect(panel.getByText(QUOTE_1)).toHaveCount(0);
   await expect(panel.locator('#summary')).toHaveValue(SUMMARY);
 });
+
+test('keeps the full summary when typing quickly then blurring', async () => {
+  const FAST = 'My test summary';
+  const key = pageKey(fixture.url);
+  await article.goto(fixture.url);
+  await waitReady(article);
+  const tabId = await article.evaluate(() => document.documentElement.dataset.whnTab);
+  await panel.goto(panelUrl(tabId, fixture.url));
+
+  await panel.locator('#summary').click();
+  await panel.locator('#summary').fill('');
+  await panel.locator('#title').click();
+  await expect.poll(async () => worker.evaluate(async (storageKey) => {
+    const stored = await chrome.storage.local.get(storageKey);
+    return stored[storageKey]?.summary ?? '';
+  }, key)).toBe('');
+
+  await panel.locator('#summary').click();
+  await panel.keyboard.type('My test s', { delay: 0 });
+  await expect.poll(async () => worker.evaluate(async (storageKey) => {
+    const stored = await chrome.storage.local.get(storageKey);
+    return stored[storageKey]?.summary ?? '';
+  }, key)).toBe('My test s');
+
+  await panel.keyboard.type('ummary', { delay: 0 });
+  await panel.locator('#title').click();
+  await panel.reload();
+  await expect(panel.locator('#summary')).toHaveValue(FAST);
+});

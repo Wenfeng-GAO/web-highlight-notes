@@ -8,11 +8,15 @@ const countsEl = document.querySelector('#counts');
 const exportBtn = document.querySelector('#export');
 const listEl = document.querySelector('#list');
 
+const SAVE_DEBOUNCE_MS = 300;
+
 let record = null;
 let tabId = null;
 let tabTitle = '';
 let storageKey = '';
 let copiedTimer = 0;
+let saveTimer = 0;
+let savedSummary = '';
 
 async function resolveContext() {
   const params = new URLSearchParams(location.search);
@@ -93,18 +97,49 @@ function renderList() {
   }
 }
 
+function isEditingSummary() {
+  return document.activeElement === summaryEl;
+}
+
 function render() {
   const title = record?.title || tabTitle || '未命名页面';
   titleEl.textContent = title;
   const highlights = record?.highlights || [];
   countsEl.textContent = `${highlights.length} 条划线 · ${commentCount(highlights)} 条评论`;
-  if (document.activeElement !== summaryEl) summaryEl.value = record?.summary || '';
+  // Never clobber in-progress keystrokes; the textarea is source of truth while focused.
+  if (!isEditingSummary()) summaryEl.value = record?.summary || '';
   renderList();
 }
 
 async function persist() {
   if (!record?.url) return;
   await chrome.storage.local.set({ [record.url]: toStoredRecord(record) });
+}
+
+function syncSummaryFromDom() {
+  if (!record) return;
+  record.summary = summaryEl.value;
+}
+
+async function flushSummarySave() {
+  if (!record?.url) return;
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  syncSummaryFromDom();
+  const next = record.summary || '';
+  if (next === savedSummary) return;
+  savedSummary = next;
+  await persist();
+}
+
+function scheduleSummarySave() {
+  if (!record) return;
+  syncSummaryFromDom();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = 0;
+    flushSummarySave();
+  }, SAVE_DEBOUNCE_MS);
 }
 
 async function focusHighlight(id) {
@@ -168,7 +203,7 @@ function showCopied() {
 
 async function onExport() {
   if (!record) return;
-  record.summary = summaryEl.value;
+  await flushSummarySave();
   if (!record.title) record.title = tabTitle || '未命名页面';
   await persist();
   const markdown = toMarkdown({
@@ -183,11 +218,19 @@ async function onExport() {
   showCopied();
 }
 
-function onSummaryBlur() {
-  if (!record) return;
-  if ((record.summary || '') === summaryEl.value) return;
-  record.summary = summaryEl.value;
-  persist();
+function applyStorageRecord(next) {
+  const editing = isEditingSummary();
+  const localSummary = editing ? summaryEl.value : null;
+  record = next
+    ? { ...emptyRecord(storageKey), ...next, url: storageKey }
+    : emptyRecord(storageKey);
+  if (editing) {
+    // Keep the live textarea value; a debounced echo must not wipe newer keystrokes.
+    record.summary = localSummary;
+  } else {
+    savedSummary = record.summary || '';
+  }
+  render();
 }
 
 async function main() {
@@ -209,18 +252,24 @@ async function main() {
     ? { ...emptyRecord(storageKey), ...stored[storageKey], url: storageKey }
     : emptyRecord(storageKey);
   if (!record.title) record.title = tabTitle;
+  savedSummary = record.summary || '';
   render();
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local' || !changes[storageKey]) return;
-    const next = changes[storageKey].newValue;
-    record = next
-      ? { ...emptyRecord(storageKey), ...next, url: storageKey }
-      : emptyRecord(storageKey);
-    render();
+    applyStorageRecord(changes[storageKey].newValue);
   });
 
-  summaryEl.addEventListener('blur', onSummaryBlur);
+  summaryEl.addEventListener('input', scheduleSummarySave);
+  summaryEl.addEventListener('blur', () => {
+    flushSummarySave();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSummarySave();
+  });
+  window.addEventListener('pagehide', () => {
+    flushSummarySave();
+  });
   exportBtn.addEventListener('click', () => {
     onExport();
   });
