@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>测试文章：阅读与笔记</title>
+    <style>
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #1f2328;
+        font: 18px/1.8 system-ui, "PingFang SC", sans-serif;
+      }
+      article {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 48px 24px 32px;
+      }
+      h1 { font-size: 28px; margin: 0 0 16px; }
+      p { margin: 16px 0; }
+      .spacer { height: 1400px; }
+      .controls { max-width: 720px; margin: 0 auto 80px; padding: 0 24px; }
+      textarea, #edit {
+        display: block;
+        width: 100%;
+        margin: 8px 0 16px;
+        box-sizing: border-box;
+      }
+      #edit { min-height: 48px; border: 1px solid #e5e7eb; padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <article>
+      <h1>测试文章：阅读与笔记</h1>
+      <p id="p1">第一段包含独特的句子：春天的花园里开满了黄色的花。后面还有一些说明文字用来提供足够的上下文，避免和别的段落粘在一起。</p>
+      <p id="p2">第二段用于评论：研究者在图书馆发现了一份手稿。这是后文上下文，用来包围这句话的前后文字，方便重新定位。</p>
+      <div class="spacer"></div>
+      <p id="p3">第三段也要划线：城市在黄昏时分慢慢亮起灯火。夜色缓慢落下，街道渐渐安静下来，窗口透出暖光。</p>
+    </article>
+    <section class="controls">
+      <h2>不应出现工具条</h2>
+      <label for="area">文本域</label>
+      <textarea id="area">文本域里的文字不可划线</textarea>
+      <div id="edit" contenteditable="true">可编辑区域的文字不可划线</div>
+    </section>
+  </body>
+</html>

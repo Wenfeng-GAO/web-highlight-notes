@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>划线笔记</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <div class="app">
+      <textarea id="summary" class="summary" placeholder="页面摘要"></textarea>
+      <header class="header">
+        <h1 id="title" class="title">加载中…</h1>
+        <div class="header-row">
+          <p id="counts" class="meta">0 条划线 · 0 条评论</p>
+          <button id="export" type="button">导出 MD</button>
+        </div>
+      </header>
+      <ul id="list" class="list"></ul>
+    </div>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
