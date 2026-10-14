@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Web Highlight Notes 使用手册</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><h1>🖍 Web Highlight Notes</h1><p>在网页上划线、写评论、写摘要，并一键导出 Markdown 的 Chrome 扩展</p></header>
+<nav><a href="#demo">演示</a><a href="#install">安装</a><a href="#highlight">划线</a><a href="#comment">划线+评论</a><a href="#summary">写摘要</a><a href="#persist">刷新后保留</a><a href="#export">导出 Markdown</a><a href="#faq">常见问题</a></nav>
+<main>
+<section id="demo"><h2>演示视频</h2>
+<video controls preload="metadata" poster="assets/poster.png" width="800"><source src="assets/demo.mp4" type="video/mp4">你的浏览器不支持视频播放，<a href="assets/demo.mp4">点此下载</a>。</video>
+<p>约 1 分钟，涵盖划线、评论、摘要、刷新保留和导出。</p></section>
+
+<section id="install"><h2>安装（加载已解压扩展）</h2>
+<ol><li>获取 <code>web-highlight-notes-vX.Y.Z.zip</code>（或在源码目录运行 <code>npm run build</code>，产物在 <code>dist/</code>）。</li>
+<li>解压到一个固定目录（之后不要删除或移动它）。</li>
+<li>在 Chrome 打开 <code>chrome://extensions</code>，打开右上角「开发者模式」。</li>
+<li>点「加载已解压的扩展程序」，选择解压后的目录。</li>
+<li>把扩展固定到工具栏；点击图标即可打开侧边栏。</li></ol>
+<p class="tip">升级时：解压新版本覆盖旧目录，然后在扩展页点「重新加载」。笔记保存在浏览器本地，不会丢失。</p></section>
+
+<section id="highlight"><h2>划线</h2>
+<p>在普通网页上选中一段文字，选区旁会出现工具条，点「划线」即可把文字标黄。</p>
+<img src="assets/toolbar.png" alt="选中文字后的工具条">
+<p>在输入框、文本域和可编辑区域中选中文字不会弹出工具条，不会干扰你的输入。</p></section>
+
+<section id="comment"><h2>划线 + 评论</h2>
+<p>工具条上点「划线+评论」，会划线并打开评论气泡。之后点击任意已有划线也能打开气泡，编辑评论或删除划线。</p>
+<img src="assets/bubble.png" alt="评论气泡">
+<ul><li><kbd>⌘/Ctrl</kbd> + <kbd>Enter</kbd> 或「保存」：保存评论</li><li><kbd>Esc</kbd>：关闭气泡，未保存的草稿会保留，下次打开时恢复</li></ul></section>
+
+<section id="summary"><h2>写摘要</h2>
+<p>点击工具栏图标打开侧边栏，顶部是本页摘要输入框。输入时自动保存，失焦或离开页面时立即落盘。</p>
+<img src="assets/sidepanel.png" alt="侧边栏">
+<p>侧边栏还会显示页面标题、「x 条划线 · y 条评论」，以及按正文顺序排列的划线列表；点击某条会滚动到正文对应位置并闪烁提示。</p></section>
+
+<section id="persist"><h2>刷新后保留</h2>
+<p>笔记保存在 <code>chrome.storage.local</code>，按页面 URL（忽略 <code>#</code> 后的部分）区分。刷新或再次打开同一页面时，扩展会用原文和前后约 30 个字的上下文重新定位划线，即使文字跨越多个元素也能找到。</p></section>
+
+<section id="export"><h2>导出 Markdown</h2>
+<p>在侧边栏点「导出 MD」：笔记会复制到剪贴板，同时下载一个 <code>.md</code> 文件，按钮显示「已复制 ✓」约 1.5 秒。文件包含标题、来源链接、摘要，以及每条划线及其评论。</p></section>
+
+<section id="faq"><h2>常见问题</h2>
+<h3>侧边栏里有的划线标着「⚠ 未定位」？</h3>
+<img src="assets/unanchored.png" alt="未定位的划线">
+<p>网页正文被修改后，扩展找不到原句时会显示这个标记。这条划线和评论不会丢失，仍会列在侧边栏中并随导出一起带上，只是无法在页面上高亮和跳转。</p>
+<h3>为什么某些页面不能划线？</h3>
+<p>Chrome 不允许扩展在 <code>chrome://</code> 页面、Chrome 网上应用店等特殊页面运行。</p>
+<h3>笔记会上传吗？</h3>
+<p>不会。所有数据只保存在本机浏览器中。卸载扩展会清除这些数据，请先导出。</p></section>
+</main>
+<footer>Web Highlight Notes · <a href="https://github.com/Wenfeng-GAO/web-highlight-notes">GitHub</a></footer>
+</body></html>
