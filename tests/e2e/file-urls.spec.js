@@ -99,8 +99,8 @@ test.beforeAll(async () => {
   [worker] = context.serviceWorkers();
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 20000 });
   extensionId = new URL(worker.url()).host;
-  // The worker registers the file:///* content script right after start; pages opened
-  // before that would not get it (a fresh profile race, not something users hit).
+  // The worker registers the file:///* content script right after it starts; a page
+  // opened before that would miss it (a fresh-profile race, not something users hit).
   await expect.poll(() => worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts({ ids: ['whn-auto'] }))[0]?.matches || []), { timeout: 15000 }).toContain('file:///*');
 });
 
@@ -238,46 +238,80 @@ test('PDF viewer, about:blank, data: and blob: pages are unsupported (after a cl
   await page.close();
 });
 
-test('file access off: the panel says so and opens this extension\'s settings', async () => {
+// Issue #11: with file access off Chrome hides a file tab's URL (no tabs permission),
+// so the panel must recognise the tab from what it can see, not from its URL.
+test('file access off: after the icon click the panel shows the file-access card and opens this extension\'s settings', async () => {
   worker = await setFileAccess(context, extensionId, false);
   expect(await worker.evaluate(() => chrome.extension.isAllowedFileSchemeAccess())).toBe(false);
-  const page = context.pages()[0];
+  const page = await context.newPage();
   await page.goto(docUrl);
   await page.waitForTimeout(800);
   expect(await ready(page)).toBe('');
-  // file:///* lets the panel read the tab even with file access off: it shows the
-  // saved highlights and the file-access card, and no per-site 「去授权」 line.
-  const panel = await openPanel(await activeTabId(page));
-  await expect(panel.locator('#title')).toHaveText(TITLE);
-  await expect(panel.locator('#counts')).toHaveText('2 条划线 · 1 条评论');
-  await expect(panel.locator('.quote')).toHaveCount(2);
-  await expect(panel.locator('#status')).toBeHidden();
+  const id = await activeTabId(page);
+  // The real condition (#11): the URL of the file tab is hidden from the extension.
+  expect(await worker.evaluate(async (tid) => (await chrome.tabs.get(tid)).url ?? null, id)).toBeNull();
+
+  // Before any click this tab looks like any page without a grant.
+  const panel = await openPanel(id);
+  await expect(panel.locator('#list .empty')).toHaveText('点击插件图标，在此页面使用划线笔记');
+  await expect(panel.locator('#notice')).toBeHidden();
+
+  // The click (which also opens the real side panel) tells the open panel what this tab is.
+  await clickActionIcon(page);
   const notice = panel.locator('#notice');
   await expect(notice).toBeVisible();
+  await expect(panel.locator('#list .empty', { hasText: '此页面不支持划线' })).toHaveCount(0);
+  await expect(panel.locator('.app')).toHaveAttribute('data-mode', 'file-access-off');
   await expect(notice.locator('.notice-title')).toHaveText('需要允许访问本地文件');
   await expect(notice.locator('.notice-body')).toHaveText('在扩展详情里打开“允许访问文件网址”，就能在本地 HTML 上划线');
+  await expect(notice.locator('.notice-note')).toHaveText('如果这不是本地文件（例如空白页），此页面不支持划线。');
   await expect(notice).toHaveCSS('background-color', 'rgb(249, 250, 251)');
   await expect(notice).toHaveCSS('border-radius', '8px');
   await expect(notice.locator('.notice-title')).toHaveCSS('font-size', '13px');
   await expect(notice.locator('.notice-title')).toHaveCSS('font-weight', '700');
   await expect(notice.locator('.notice-body')).toHaveCSS('font-size', '12px');
   await expect(notice.locator('.notice-body')).toHaveCSS('color', 'rgb(107, 114, 128)');
+  await expect(panel.locator('#export')).toBeHidden();
+  await panel.close();
+
+  // A panel opened after the click shows the same.
+  const later = await openPanel(id);
+  await expect(later.locator('#notice')).toBeVisible();
   if (shots) {
-    await panel.setViewportSize({ width: 360, height: 640 });
-    await panel.screenshot({ path: path.join(shots, 'sidepanel-file-access-off.png') });
-    await panel.setViewportSize({ width: 1280, height: 800 });
+    await later.setViewportSize({ width: 360, height: 640 });
+    await later.screenshot({ path: path.join(shots, 'sidepanel-file-access-off.png') });
+    await later.setViewportSize({ width: 1280, height: 800 });
   }
   const opened = context.waitForEvent('page');
-  await notice.getByRole('button', { name: '打开扩展设置' }).click();
+  await later.locator('#notice').getByRole('button', { name: '打开扩展设置' }).click();
   const settings = await opened;
   await expect.poll(() => settings.url()).toBe(`chrome://extensions/?id=${extensionId}`);
   await settings.close();
+  await later.close();
+  await page.close();
+});
 
-  // A click still lets activeTab in for this one page load.
-  await clickActionIcon(page);
+test('file access off: chrome:// and the new tab page still say 「此页面不支持划线」, not the file card', async () => {
+  for (const url of ['chrome://version', 'chrome://newtab']) {
+    const page = await context.newPage();
+    await page.goto(url);
+    await clickActionIcon(page);
+    await page.waitForTimeout(300);
+    await expectUnsupported(page);
+    await page.close();
+  }
+});
+
+test('file access on again: the file tab works and the card is gone', async () => {
+  worker = await setFileAccess(context, extensionId, true);
+  await expect.poll(() => worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts({ ids: ['whn-auto'] }))[0]?.matches || []), { timeout: 10000 }).toContain('file:///*');
+  const page = await context.newPage();
+  await page.goto(docUrl);
   await expect.poll(() => ready(page)).toBe('1');
   await expect(page.locator('.whn-hl')).toHaveCount(2);
-
+  const panel = await openPanel(await activeTabId(page));
+  await expect(panel.locator('#counts')).toHaveText('2 条划线 · 1 条评论');
+  await expect(panel.locator('#notice')).toBeHidden();
   await panel.close();
   await page.close();
 });

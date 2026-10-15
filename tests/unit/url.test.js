@@ -25,6 +25,7 @@ describe('url helpers', () => {
     // Messages observed from Chrome (see tests/e2e/file-urls.spec.js).
     expect(isUnsupportedPageError('Cannot access a chrome:// URL')).toBe(true);
     expect(isUnsupportedPageError('The extensions gallery cannot be scripted.')).toBe(true);
+    expect(isUnsupportedPageError('Cannot access contents of url "chrome-error://chromewebdata/". Extension manifest must request permission to access this host.')).toBe(true);
     expect(isUnsupportedPageError('Cannot access contents of the page. Extension manifest must request permission to access the respective host.')).toBe(false);
   });
   it('tells site patterns from wildcards', () => {

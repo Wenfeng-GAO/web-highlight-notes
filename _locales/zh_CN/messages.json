@@ -145,5 +145,8 @@
   },
   "panelUnsupported": {
     "message": "此页面不支持划线"
+  },
+  "panelFileAccessMaybe": {
+    "message": "如果这不是本地文件（例如空白页），此页面不支持划线。"
   }
 }

@@ -1,4 +1,4 @@
-import { isFileUrl, isSitePattern, isSupportedUrl, originPattern } from '../lib/url.js';
+import { isFileUrl, isSitePattern, isSupportedUrl, isUnsupportedPageError, originPattern } from '../lib/url.js';
 
 // Sites the user granted (or that kept a grant from 0.1.3) get a persistent
 // content script, so highlights restore on load with no click. Other sites run
@@ -120,24 +120,32 @@ chrome.runtime.onStartup.addListener(() => {
 const TAB_STATE_PREFIX = 'whn:tab:';
 
 /**
- * Without the tabs permission an unreadable tab has no url. A click grants activeTab
- * on web pages, and file:///* lets us read local files, so a tab that still cannot be
- * read after a click is about:blank, data:, blob: or another page extensions may not touch.
+ * Without the tabs permission an unreadable tab has no url. A click grants activeTab on
+ * web pages, so a tab still unreadable after a click is one of:
+ *  - chrome://, the new tab page, the Web Store: Chrome's error names them -> unsupported;
+ *  - a local file while "Allow access to file URLs" is off -> the panel's file-access card;
+ *  - about:blank, data:, blob:. With file access off these look exactly like a local file
+ *    (same hidden url, same generic error), so they get the card too, with a note.
  */
 async function noteUnreadableTab(tabId) {
   let href = '';
+  let message = '';
   try {
     const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
     href = result?.result || '';
-  } catch {
-    // Still no access.
+  } catch (error) {
+    message = String(error?.message || error);
   }
   // A blob: page made by a local file can be scripted, but its URL dies with the page.
   if (isSupportedUrl(href)) {
     injectTab(tabId);
     return;
   }
-  await chrome.storage.session.set({ [`${TAB_STATE_PREFIX}${tabId}`]: 'unsupported' });
+  let state = 'unsupported';
+  if (!href && !isUnsupportedPageError(message) && !(await chrome.extension.isAllowedFileSchemeAccess())) {
+    state = 'file-access-off';
+  }
+  await chrome.storage.session.set({ [`${TAB_STATE_PREFIX}${tabId}`]: state });
 }
 
 chrome.action.onClicked.addListener((tab) => {
