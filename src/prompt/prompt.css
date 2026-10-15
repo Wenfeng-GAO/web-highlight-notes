@@ -1,0 +1,48 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  overflow: hidden;
+}
+.card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+.text {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1F2328;
+}
+.buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+button {
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border: 0;
+  white-space: nowrap;
+}
+.allow {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: #1F2328;
+  color: #ffffff;
+}
+.later {
+  height: 28px;
+  padding: 0 4px;
+  background: transparent;
+  color: #6B7280;
+}

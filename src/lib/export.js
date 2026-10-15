@@ -12,27 +12,36 @@ function quoteBlock(text) {
   return lines.map((line) => `> ${line}`).join('\n');
 }
 
-export function toMarkdown({ title, url, date, summary, highlights }) {
+export const DEFAULT_LABELS = {
+  source: '来源：',
+  summary: '摘要',
+  highlights: '划线',
+  comment: '评论：',
+  defaultName: '划线笔记',
+};
+
+export function toMarkdown({ title, url, date, summary, highlights, labels = DEFAULT_LABELS }) {
+  const l = { ...DEFAULT_LABELS, ...labels };
   const lines = [
     `# ${title ?? ''}`,
-    `来源：${url ?? ''} · ${date ?? ''}`,
-    '## 摘要',
+    `${l.source}${url ?? ''} · ${date ?? ''}`,
+    `## ${l.summary}`,
     summary ?? '',
-    '## 划线',
+    `## ${l.highlights}`,
   ];
   for (const highlight of highlights || []) {
     lines.push(quoteBlock(highlight.text ?? ''));
     const comment = (highlight.comment ?? '').trim();
-    if (comment) lines.push(`评论：${comment}`);
+    if (comment) lines.push(`${l.comment}${comment}`);
   }
   return `${lines.join('\n')}\n`;
 }
 
-export function downloadFilename(title) {
-  const cleaned = String(title || '划线笔记')
+export function downloadFilename(title, fallback = DEFAULT_LABELS.defaultName) {
+  const cleaned = String(title || fallback)
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
-  return `${cleaned || '划线笔记'}.md`;
+  return `${cleaned || fallback}.md`;
 }

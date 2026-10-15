@@ -1,0 +1,114 @@
+{
+  "extName": {
+    "message": "web-highlight-notes"
+  },
+  "extDescription": {
+    "message": "在网页上划线、写评论，并在侧边栏汇总导出 Markdown。"
+  },
+  "actionTitle": {
+    "message": "划线笔记"
+  },
+  "commandOpen": {
+    "message": "在当前页使用划线笔记"
+  },
+  "toolbarLabel": {
+    "message": "划线"
+  },
+  "toolbarHighlight": {
+    "message": "划线"
+  },
+  "toolbarHighlightComment": {
+    "message": "划线+评论"
+  },
+  "bubbleLabel": {
+    "message": "划线评论"
+  },
+  "bubbleCommentLabel": {
+    "message": "评论"
+  },
+  "bubbleCommentPlaceholder": {
+    "message": "写下评论"
+  },
+  "bubbleDelete": {
+    "message": "删除划线"
+  },
+  "bubbleSave": {
+    "message": "保存"
+  },
+  "promptLabel": {
+    "message": "网站授权"
+  },
+  "promptText": {
+    "message": "允许在此网站保存显示，刷新后划线仍在"
+  },
+  "promptAllow": {
+    "message": "允许"
+  },
+  "promptLater": {
+    "message": "暂不"
+  },
+  "panelLoading": {
+    "message": "加载中…"
+  },
+  "panelExport": {
+    "message": "导出 MD"
+  },
+  "panelCopied": {
+    "message": "已复制 ✓"
+  },
+  "panelCounts": {
+    "message": "$H$ 条划线 · $C$ 条评论",
+    "placeholders": {
+      "h": {
+        "content": "$1",
+        "example": "3"
+      },
+      "c": {
+        "content": "$2",
+        "example": "2"
+      }
+    }
+  },
+  "panelSummaryPlaceholder": {
+    "message": "页面摘要"
+  },
+  "panelEmpty": {
+    "message": "选中文字即可划线"
+  },
+  "panelUnanchored": {
+    "message": "⚠ 未定位"
+  },
+  "panelUntitled": {
+    "message": "未命名页面"
+  },
+  "panelNoPage": {
+    "message": "未打开页面"
+  },
+  "panelLoadFailed": {
+    "message": "加载失败"
+  },
+  "panelNeedClick": {
+    "message": "此网站需点击插件图标显示划线"
+  },
+  "panelGrant": {
+    "message": "去授权"
+  },
+  "panelClickToUse": {
+    "message": "点击插件图标，在此页面使用划线笔记"
+  },
+  "exportSource": {
+    "message": "来源："
+  },
+  "exportSummary": {
+    "message": "摘要"
+  },
+  "exportHighlights": {
+    "message": "划线"
+  },
+  "exportComment": {
+    "message": "评论："
+  },
+  "exportDefaultName": {
+    "message": "划线笔记"
+  }
+}

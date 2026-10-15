@@ -74,3 +74,18 @@ describe('formatDate and filename', () => {
     expect(downloadFilename('')).toBe('划线笔记.md');
   });
 });
+
+describe('toMarkdown labels', () => {
+  it('uses the given labels for an English export', () => {
+    const markdown = toMarkdown({
+      title: 'T',
+      url: 'https://example.com/a',
+      date: '2026-10-15',
+      summary: 'S',
+      highlights: [{ text: 'quote', comment: 'note' }],
+      labels: { source: 'Source: ', summary: 'Summary', highlights: 'Highlights', comment: 'Note: ' },
+    });
+    expect(markdown).toBe('# T\nSource: https://example.com/a · 2026-10-15\n## Summary\nS\n## Highlights\n> quote\nNote: note\n');
+    expect(downloadFilename('', 'highlight-notes')).toBe('highlight-notes.md');
+  });
+});

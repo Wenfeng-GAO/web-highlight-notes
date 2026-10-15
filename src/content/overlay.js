@@ -1,3 +1,5 @@
+import { t } from '../lib/i18n.js';
+
 const FONT = 'system-ui, -apple-system, "PingFang SC", sans-serif';
 
 const CSS = `
@@ -110,6 +112,22 @@ const CSS = `
     line-height: 1.4;
     padding: 4px 0;
   }
+  .prompt {
+    position: absolute;
+    display: none;
+    width: 240px;
+    height: 64px;
+    box-sizing: border-box;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    pointer-events: auto;
+    overflow: hidden;
+  }
+  .prompt.open {
+    display: block;
+  }
   .primary {
     height: 32px;
     border: 0;
@@ -140,24 +158,36 @@ export function mountOverlay() {
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `
     <style>${CSS}</style>
-    <div class="toolbar" role="toolbar" aria-label="划线">
-      <button type="button" data-action="highlight">划线</button>
-      <button type="button" data-action="highlight-comment">划线+评论</button>
+    <div class="toolbar" role="toolbar">
+      <button type="button" data-action="highlight"></button>
+      <button type="button" data-action="highlight-comment"></button>
     </div>
-    <div class="bubble" role="dialog" aria-label="划线评论">
+    <div class="bubble" role="dialog">
       <div class="quote"></div>
-      <textarea aria-label="评论" placeholder="写下评论"></textarea>
+      <textarea></textarea>
       <div class="actions">
-        <button type="button" class="danger" data-action="delete">删除划线</button>
-        <button type="button" class="primary" data-action="save">保存</button>
+        <button type="button" class="danger" data-action="delete"></button>
+        <button type="button" class="primary" data-action="save"></button>
       </div>
     </div>
+    <iframe class="prompt" title=""></iframe>
   `;
+  // Strings are set as text/attributes, never parsed as HTML.
+  shadow.querySelector('.toolbar').setAttribute('aria-label', t('toolbarLabel'));
+  shadow.querySelector('[data-action="highlight"]').textContent = t('toolbarHighlight');
+  shadow.querySelector('[data-action="highlight-comment"]').textContent = t('toolbarHighlightComment');
+  shadow.querySelector('.bubble').setAttribute('aria-label', t('bubbleLabel'));
+  shadow.querySelector('textarea').setAttribute('aria-label', t('bubbleCommentLabel'));
+  shadow.querySelector('textarea').setAttribute('placeholder', t('bubbleCommentPlaceholder'));
+  shadow.querySelector('[data-action="delete"]').textContent = t('bubbleDelete');
+  shadow.querySelector('[data-action="save"]').textContent = t('bubbleSave');
+  shadow.querySelector('.prompt').title = t('promptLabel');
 
   const toolbar = shadow.querySelector('.toolbar');
   const bubble = shadow.querySelector('.bubble');
   const quoteEl = shadow.querySelector('.quote');
   const textarea = shadow.querySelector('textarea');
+  const prompt = shadow.querySelector('.prompt');
 
   function place(element, top, left) {
     element.style.top = `${Math.round(top)}px`;
@@ -218,6 +248,29 @@ export function mountOverlay() {
       let left = rect.left;
       left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
       place(bubble, top, left);
+    },
+    prompt,
+    promptOpen() {
+      return prompt.classList.contains('open');
+    },
+    /** Card 8px below the toolbar's last position, same left edge, kept on screen. */
+    showPrompt(src, toolbarRect) {
+      const width = 240;
+      let top = (toolbarRect?.bottom ?? 40) + 8;
+      let left = toolbarRect?.left ?? 8;
+      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+      top = Math.max(4, Math.min(top, window.innerHeight - 80));
+      prompt.style.top = `${Math.round(top)}px`;
+      prompt.style.left = `${Math.round(left)}px`;
+      if (prompt.getAttribute('src') !== src) prompt.setAttribute('src', src);
+      prompt.classList.add('open');
+    },
+    setPromptHeight(height) {
+      if (height > 0 && height < 400) prompt.style.height = `${height + 2}px`;
+    },
+    hidePrompt() {
+      prompt.classList.remove('open');
+      prompt.removeAttribute('src');
     },
     eventFromHost(event) {
       return event.target === host || host.contains(event.target);

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
+import { answerPermissionDialog, chromeLocaleEnv } from './native.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.join(root, 'artifacts');
@@ -126,7 +127,9 @@ test.beforeAll(async () => {
     headless: false,
     viewport: { width: 1280, height: 800 },
     acceptDownloads: true,
+    env: chromeLocaleEnv('zh_CN'),
     args: [
+      '--lang=zh-CN',
       `--disable-extensions-except=${root}`,
       `--load-extension=${root}`,
       '--no-first-run',
@@ -145,11 +148,28 @@ test.beforeAll(async () => {
     if (message.type() === 'error') console.log('CONSOLE', message.text());
   });
   await article.goto(fixture.url);
+
+  // 0.1.4 has no host access at install. Grant the fixture site the way a user
+  // does (extension page click + native dialog), which registers the auto script.
+  panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/sidepanel.html`);
+  await panel.evaluate(() => {
+    const button = document.createElement('button');
+    button.id = 'test-grant';
+    button.textContent = 'grant';
+    button.addEventListener('click', async () => {
+      button.dataset.result = String(await chrome.permissions.request({ origins: ['http://127.0.0.1/*'] }));
+    });
+    document.body.prepend(button);
+  });
+  await panel.locator('#test-grant').click();
+  await answerPermissionDialog(panel, true);
+  await expect(panel.locator('#test-grant')).toHaveAttribute('data-result', 'true');
+  await article.bringToFront();
   await waitReady(article);
   await article.waitForFunction(() => document.documentElement.dataset.whnTab);
   const tabId = await article.evaluate(() => document.documentElement.dataset.whnTab);
 
-  panel = await context.newPage();
   panel.on('pageerror', (error) => console.log('PANELERROR', error.message));
   panel.on('console', (message) => {
     if (message.type() === 'error') console.log('PANEL', message.text());

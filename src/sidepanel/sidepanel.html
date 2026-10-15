@@ -1,21 +1,22 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>划线笔记</title>
+    <title>web-highlight-notes</title>
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
     <div class="app">
       <header class="header">
         <div class="header-row">
-          <h1 id="title" class="title">加载中…</h1>
-          <button id="export" type="button">导出 MD</button>
+          <h1 id="title" class="title" data-i18n="panelLoading"></h1>
+          <button id="export" type="button" data-i18n="panelExport"></button>
         </div>
-        <p id="counts" class="meta">0 条划线 · 0 条评论</p>
+        <p id="counts" class="meta"></p>
+        <p id="status" class="status" hidden><span data-i18n="panelNeedClick"></span> <a href="#" id="grant" role="button" data-i18n="panelGrant"></a></p>
       </header>
-      <textarea id="summary" class="summary" placeholder="页面摘要"></textarea>
+      <textarea id="summary" class="summary" data-i18n-placeholder="panelSummaryPlaceholder"></textarea>
       <ul id="list" class="list"></ul>
     </div>
     <script type="module" src="sidepanel.js"></script>

@@ -1,12 +1,18 @@
 import { downloadFilename, formatDate, toMarkdown } from '../lib/export.js';
 import { commentCount, emptyRecord, sortHighlights, toStoredRecord } from '../lib/model.js';
-import { pageKey } from '../lib/url.js';
+import { t, localize } from '../lib/i18n.js';
+import { isWebUrl, originPattern, pageKey } from '../lib/url.js';
+
+localize(document);
+const DECLINED_KEY = '__whn:declined';
 
 const summaryEl = document.querySelector('#summary');
 const titleEl = document.querySelector('#title');
 const countsEl = document.querySelector('#counts');
 const exportBtn = document.querySelector('#export');
 const listEl = document.querySelector('#list');
+const statusEl = document.querySelector('#status');
+const grantEl = document.querySelector('#grant');
 
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -19,6 +25,15 @@ let saveTimer = 0;
 let savedSummary = '';
 let showGeneration = 0;
 let showChain = Promise.resolve();
+
+/** Without the tabs permission tab.url is hidden on sites we cannot access; an injected page can still tell us. */
+async function pageInfo(id) {
+  try {
+    return await chrome.tabs.sendMessage(id, { type: 'whn:info' });
+  } catch {
+    return null;
+  }
+}
 
 async function resolveContext() {
   const params = new URLSearchParams(location.search);
@@ -49,6 +64,11 @@ async function resolveContext() {
       // The tab may have closed. The query string can still identify the page.
     }
   }
+  if (!url && Number.isFinite(id)) {
+    const info = await pageInfo(id);
+    url = info?.url || '';
+    title = title || info?.title || '';
+  }
 
   return { tabId: Number.isFinite(id) ? id : null, url, tabTitle: title };
 }
@@ -59,7 +79,7 @@ function renderList() {
   if (!items.length) {
     const empty = document.createElement('li');
     empty.className = 'empty';
-    empty.textContent = '选中文字即可划线';
+    empty.textContent = t('panelEmpty');
     listEl.appendChild(empty);
     return;
   }
@@ -73,7 +93,7 @@ function renderList() {
     if (highlight.anchored === false) {
       const warn = document.createElement('div');
       warn.className = 'warn';
-      warn.textContent = '⚠ 未定位';
+      warn.textContent = t('panelUnanchored');
       item.appendChild(warn);
     }
 
@@ -99,24 +119,54 @@ function renderList() {
   }
 }
 
+function countsText(highlights) {
+  return t('panelCounts', [String(highlights.length), String(commentCount(highlights))]);
+}
+
+let statusGeneration = 0;
+/**
+ * Sites without a host grant keep their notes in storage and list them here,
+ * but the page only shows them after a toolbar click. Say so, and offer the grant.
+ */
+async function updateStatus() {
+  const generation = ++statusGeneration;
+  const pattern = storageKey ? originPattern(storageKey) : null;
+  let show = false;
+  if (pattern) {
+    const [granted, stored] = await Promise.all([
+      chrome.permissions.contains({ origins: [pattern] }).catch(() => false),
+      chrome.storage.local.get(DECLINED_KEY),
+    ]);
+    const declined = !!stored[DECLINED_KEY]?.[pattern];
+    show = !granted && (declined || (record?.highlights || []).length > 0);
+  }
+  if (generation !== statusGeneration) return;
+  statusEl.hidden = !show;
+  document.documentElement.dataset.whnStatus = show ? 'need-click' : 'ok';
+}
+
+async function onGrant(event) {
+  event.preventDefault();
+  const pattern = storageKey ? originPattern(storageKey) : null;
+  if (!pattern) return;
+  try {
+    await chrome.permissions.request({ origins: [pattern] });
+  } catch {
+    // Dismissed or not allowed for this URL.
+  }
+  updateStatus();
+}
+
 function isEditingSummary() {
   return document.activeElement === summaryEl;
 }
 
-function isWebUrl(url) {
-  try {
-    const protocol = new URL(url).protocol;
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 function render({ urlChanged = false } = {}) {
-  const title = record?.title || tabTitle || '未命名页面';
+  const title = record?.title || tabTitle || t('panelUntitled');
   titleEl.textContent = title;
   const highlights = record?.highlights || [];
-  countsEl.textContent = `${highlights.length} 条划线 · ${commentCount(highlights)} 条评论`;
+  countsEl.textContent = countsText(highlights);
+  updateStatus();
   const nextSummary = record?.summary || '';
   const focused = isEditingSummary();
   // Keep the same textarea node while it is focused. Assign value only when the
@@ -214,19 +264,25 @@ function downloadMarkdown(filename, text) {
 }
 
 function showCopied() {
-  exportBtn.textContent = '已复制 ✓';
+  exportBtn.textContent = t('panelCopied');
   clearTimeout(copiedTimer);
   copiedTimer = setTimeout(() => {
-    exportBtn.textContent = '导出 MD';
+    exportBtn.textContent = t('panelExport');
   }, 1500);
 }
 
 async function onExport() {
   if (!record) return;
   await flushSummarySave();
-  if (!record.title) record.title = tabTitle || '未命名页面';
+  if (!record.title) record.title = tabTitle || t('panelUntitled');
   await persist();
   const markdown = toMarkdown({
+    labels: {
+      source: t('exportSource'),
+      summary: t('exportSummary'),
+      highlights: t('exportHighlights'),
+      comment: t('exportComment'),
+    },
     title: record.title,
     url: record.url,
     date: formatDate(new Date()),
@@ -234,7 +290,7 @@ async function onExport() {
     highlights: sortHighlights(record.highlights || []),
   });
   await copyText(markdown);
-  downloadMarkdown(downloadFilename(record.title), markdown);
+  downloadMarkdown(downloadFilename(record.title, t('exportDefaultName')), markdown);
   showCopied();
 }
 
@@ -279,7 +335,17 @@ async function currentWindowId() {
 }
 
 async function showTab(tab) {
-  const url = tab?.url || '';
+  let url = tab?.url || '';
+  if (!url && Number.isFinite(tab?.id)) {
+    // No access to tab.url here (no grant, activeTab gone). Ask the page.
+    const info = await pageInfo(tab.id);
+    if (info?.url) tab = { ...tab, url: info.url, title: tab.title || info.title };
+    url = info?.url || '';
+    if (!url) {
+      showUnavailable(tab.id);
+      return;
+    }
+  }
   if (!isWebUrl(url)) return;
   const nextKey = pageKey(url);
   const nextId = Number.isFinite(tab.id) ? tab.id : null;
@@ -336,23 +402,38 @@ function bindTabEvents() {
   });
 }
 
-function showEmpty() {
+function showEmpty(message = t('panelEmpty'), title = t('panelNoPage')) {
   record = null;
   storageKey = '';
   tabId = null;
-  titleEl.textContent = '未打开页面';
-  countsEl.textContent = '0 条划线 · 0 条评论';
+  titleEl.textContent = title;
+  countsEl.textContent = countsText([]);
   if (!isEditingSummary() && summaryEl.value) summaryEl.value = '';
   listEl.replaceChildren();
   const empty = document.createElement('li');
   empty.className = 'empty';
-  empty.textContent = '选中文字即可划线';
+  empty.textContent = message;
   listEl.appendChild(empty);
+  updateStatus();
+}
+
+/** A web tab we cannot read yet: no grant for its site and no click on this page. */
+function showUnavailable(id) {
+  clearTimeout(saveTimer);
+  saveTimer = 0;
+  flushSummarySave();
+  showGeneration += 1;
+  showEmpty(t('panelClickToUse'), t('panelUntitled'));
+  tabId = Number.isFinite(id) ? id : null;
 }
 
 function bindPanelEvents() {
   bindTabEvents();
+  chrome.permissions?.onAdded?.addListener(() => updateStatus());
+  chrome.permissions?.onRemoved?.addListener(() => updateStatus());
+  grantEl.addEventListener('click', onGrant);
   chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[DECLINED_KEY]) updateStatus();
     if (area !== 'local' || !storageKey || !changes[storageKey]) return;
     // Drop an in-flight tab read so it cannot paint a record older than this write.
     showGeneration += 1;
@@ -396,5 +477,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error);
-  titleEl.textContent = '加载失败';
+  titleEl.textContent = t('panelLoadFailed');
 });
