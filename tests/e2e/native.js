@@ -40,8 +40,13 @@ export function chromeLocaleEnv(locale = 'zh_CN') {
  * disabled after that reload, so enable it again. Returns the new service worker.
  */
 export async function setFileAccess(context, extensionId, on) {
+  // Like a user flipping "Allow access to file URLs" on chrome://extensions. Developer
+  // mode must be on first: without it the toggle leaves the extension disabled, and
+  // re-enabling it by hand gives a state real installs never reach (file:// tab URLs
+  // stay readable with file access off), which once hid a 0.1.5 bug (#11).
   const page = await context.newPage();
   await page.goto(`chrome://extensions/?id=${extensionId}`);
+  await page.evaluate(() => new Promise((resolve) => chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true }, resolve)));
   const nextWorker = context.waitForEvent('serviceworker', { timeout: 15000 }).catch(() => null);
   await page.evaluate(([id, allow]) => new Promise((resolve, reject) => {
     chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, fileAccess: allow }, () => {
@@ -49,9 +54,15 @@ export async function setFileAccess(context, extensionId, on) {
       else resolve();
     });
   }), [extensionId, on]);
-  await page.waitForTimeout(800);
-  await page.evaluate((id) => new Promise((resolve) => chrome.management.setEnabled(id, true, () => resolve())), extensionId);
-  const info = await page.evaluate((id) => new Promise((resolve) => chrome.developerPrivate.getExtensionInfo(id, resolve)), extensionId);
+  const info = await page.evaluate(async (id) => {
+    const get = () => new Promise((resolve) => chrome.developerPrivate.getExtensionInfo(id, resolve));
+    for (let i = 0; i < 30; i += 1) {
+      const current = await get();
+      if (current.state === 'ENABLED') return current;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    return get();
+  }, extensionId);
   await page.close();
   if (info.state !== 'ENABLED' || info.fileAccess.isActive !== on) throw new Error(`file access toggle failed: ${JSON.stringify({ state: info.state, fileAccess: info.fileAccess })}`);
   const worker = await nextWorker;

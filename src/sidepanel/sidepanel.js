@@ -15,6 +15,7 @@ const statusEl = document.querySelector('#status');
 const appEl = document.querySelector('.app');
 const noticeEl = document.querySelector('#notice');
 const openSettingsEl = document.querySelector('#open-settings');
+const noticeNoteEl = document.querySelector('#notice-note');
 const TAB_STATE_PREFIX = 'whn:tab:';
 let unreadableTabId = null;
 const grantEl = document.querySelector('#grant');
@@ -450,6 +451,7 @@ function showEmpty(message = t('panelEmpty'), title = t('panelNoPage'), mode = '
 function setMode(mode) {
   appEl.dataset.mode = mode;
   noticeEl.hidden = true;
+  noticeNoteEl.hidden = true;
 }
 
 function leavePage(id) {
@@ -480,17 +482,30 @@ async function classifyUnreadable(id) {
     if (isUnsupportedPageError(error?.message || error)) return 'unsupported';
   }
   const key = `${TAB_STATE_PREFIX}${id}`;
-  const stored = await chrome.storage.session.get(key).catch(() => ({}));
+  const [stored, fileAccess] = await Promise.all([
+    chrome.storage.session.get(key).catch(() => ({})),
+    chrome.extension.isAllowedFileSchemeAccess(),
+  ]);
+  if (stored[key] === 'file-access-off' && !fileAccess) return 'file-access-off';
+  // Unreadable is not unsupported: only the worker's verdict after a click says so.
   return stored[key] === 'unsupported' ? 'unsupported' : 'click';
 }
 
 async function showUnreadable(id) {
-  if (await classifyUnreadable(id) === 'unsupported') {
+  const kind = await classifyUnreadable(id);
+  if (kind === 'unsupported') {
     showUnsupported(id);
     return;
   }
   leavePage(id);
-  showEmpty(t('panelClickToUse'), t('panelUntitled'));
+  if (kind === 'file-access-off') {
+    // Most likely a local file with file access off; Chrome hides which page it is.
+    showEmpty('', t('panelUntitled'), 'file-access-off');
+    noticeEl.hidden = false;
+    noticeNoteEl.hidden = false;
+  } else {
+    showEmpty(t('panelClickToUse'), t('panelUntitled'));
+  }
   tabId = unreadableTabId;
 }
 
