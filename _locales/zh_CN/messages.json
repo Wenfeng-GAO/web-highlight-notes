@@ -39,7 +39,7 @@
     "message": "网站授权"
   },
   "promptText": {
-    "message": "允许在此网站保存显示，刷新后划线仍在"
+    "message": "允许在此网站自动显示划线，刷新后仍在"
   },
   "promptAllow": {
     "message": "允许"

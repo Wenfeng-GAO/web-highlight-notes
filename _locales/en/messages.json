@@ -39,7 +39,7 @@
     "message": "Site access"
   },
   "promptText": {
-    "message": "Allow on this site so highlights come back after reload"
+    "message": "Allow on this site to show highlights automatically after reload"
   },
   "promptAllow": {
     "message": "Allow"

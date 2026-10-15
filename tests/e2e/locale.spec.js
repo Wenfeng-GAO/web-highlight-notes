@@ -57,7 +57,7 @@ test('English Chrome shows English toolbar, bubble, prompt card, side panel and 
     const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     expect(overlaps(rects.card, rects.bubble)).toBe(false);
     expect(overlaps(rects.card, rects.text)).toBe(false);
-    await expect(card.getByText('Allow on this site so highlights come back after reload')).toBeVisible();
+    await expect(card.getByText('Allow on this site to show highlights automatically after reload')).toBeVisible();
     await card.getByRole('button', { name: 'Not now' }).click();
 
     const tabId = await page.evaluate(() => document.documentElement.dataset.whnTab);

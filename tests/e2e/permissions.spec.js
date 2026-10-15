@@ -141,7 +141,7 @@ test('before any grant: nothing auto-injects; an icon click (activeTab) makes hi
   expect((await stored(pageKey(page.url())))?.highlights?.map((h) => h.text)).toEqual([QUOTE_1]);
 
   const card = promptFrame(page);
-  await expect(card.getByText('允许在此网站保存显示，刷新后划线仍在')).toBeVisible();
+  await expect(card.getByText('允许在此网站自动显示划线，刷新后仍在')).toBeVisible();
   await expect(card.getByRole('button', { name: '允许', exact: true })).toBeVisible();
   await expect(card.getByRole('button', { name: '暂不', exact: true })).toBeVisible();
   // The card sits 8px under the highlighted text and never covers it.
