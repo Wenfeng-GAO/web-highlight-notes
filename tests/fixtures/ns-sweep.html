@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>命名空间扫查</title>
+<style>body{font:16px/1.6 sans-serif;margin:24px}svg{width:480px;height:auto;display:block;border:1px solid #ddd;margin:8px 0}</style>
+</head><body>
+<p id="intro">这一页覆盖 SVG 与 MathML 里所有非 HTML 文字的写法。</p>
+<svg id="diagram" viewBox="0 0 480 300" font-size="16">
+  <title>扫查示意图标题</title>
+  <defs><text id="reused">复用的定义文字</text></defs>
+  <rect x="10" y="10" width="140" height="36" fill="#eef2fd"/>
+  <text id="plain" x="20" y="34">平面框标签</text>
+  <text id="spans" x="180" y="34">前半句<tspan id="ts" fill="#b26b00">中间强调</tspan>后半句</text>
+  <g transform="translate(20 60) scale(1.5)"><text id="moved" x="0" y="20">平移缩放标签</text></g>
+  <text id="shifted" x="20" y="130" transform="translate(10 0)">自带平移标签</text>
+  <text id="turned" x="300" y="140" transform="rotate(30 300 140)">旋转的标签</text>
+  <text id="perchar" x="20" y="170" rotate="15">逐字旋转字</text>
+  <path id="curve" d="M 20 240 Q 140 180 260 240" fill="none" stroke="#ccc"/>
+  <text id="onpath"><textPath href="#curve">沿着曲线排列的文字</textPath></text>
+  <use href="#reused" x="300" y="200"/>
+  <switch><text id="switched" x="300" y="80">开关里的文字</text></switch>
+  <foreignObject x="280" y="230" width="190" height="60"><p id="fo" xmlns="http://www.w3.org/1999/xhtml" style="margin:0">嵌入的网页段落文字</p></foreignObject>
+</svg>
+<p id="formula">质能方程：<math id="emc"><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup><mtext>能量公式</mtext></math>，写在段落中间。</p>
+<p id="outro">结尾段落普通文字可以划线。</p>
+</body></html>

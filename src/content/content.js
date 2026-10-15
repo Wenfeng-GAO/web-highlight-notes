@@ -1,6 +1,6 @@
 import { offsetsFromRange } from '../lib/anchor.js';
 import { applyHighlights, paintCommentState } from '../lib/apply.js';
-import { highlightNodes, unwrapAll } from '../lib/highlight-dom.js';
+import { canMarkRange, highlightNodes, unwrapAll } from '../lib/highlight-dom.js';
 import { emptyRecord, sameRecord, toStoredRecord } from '../lib/model.js';
 import { pageKey } from '../lib/url.js';
 import { mountOverlay } from './overlay.js';
@@ -90,6 +90,12 @@ function updateToolbarFromSelection() {
   const range = selection.getRangeAt(0).cloneRange();
   const info = offsetsFromRange(document.body, range);
   if (!info || !info.exact.trim()) {
+    hideToolbar();
+    return;
+  }
+  // Like input boxes: no toolbar where a mark can't be drawn (MathML, SVG textPath,
+  // rotated SVG text). Better not to offer it than to break the page (#16).
+  if (!canMarkRange(range)) {
     hideToolbar();
     return;
   }
@@ -256,18 +262,33 @@ function onKeyUp(event) {
   }
 }
 
-function closestHighlight(target) {
+function closestHighlight(target, event) {
   const element = elementFromNode(target);
-  return element?.closest?.('.whn-hl') || null;
+  const found = element?.closest?.('.whn-hl');
+  if (found) return found;
+  // SVG marks are <rect>s painted under the <text>, so the text gets the pointer.
+  if (!event || !element?.closest?.('svg')) return null;
+  return document.elementsFromPoint(event.clientX, event.clientY).find((node) => node.classList?.contains('whn-svg-hl')) || null;
+}
+
+let hoveredSvgMark = null;
+
+function onMouseMove(event) {
+  const element = elementFromNode(event.target);
+  const mark = element?.closest?.('svg') ? closestHighlight(event.target, event) : null;
+  if (mark === hoveredSvgMark) return;
+  hoveredSvgMark?.classList.remove('whn-hover');
+  hoveredSvgMark = mark?.classList.contains('whn-svg-hl') ? mark : null;
+  hoveredSvgMark?.classList.add('whn-hover');
 }
 
 function onClick(event) {
   if (ui.eventFromHost(event)) return;
-  const highlight = closestHighlight(event.target);
+  const highlight = closestHighlight(event.target, event);
   if (!highlight) return;
   const selection = window.getSelection();
   if (selection && !selection.isCollapsed && selection.toString().trim()) return;
-  const id = highlight.dataset.whnId;
+  const id = highlight.getAttribute('data-whn-id');
   if (!id) return;
   event.preventDefault();
   event.stopPropagation();
@@ -277,8 +298,8 @@ function onClick(event) {
 function onMouseDown(event) {
   if (!ui.bubbleOpen()) return;
   if (ui.eventFromHost(event)) return;
-  const highlight = closestHighlight(event.target);
-  if (highlight && highlight.dataset.whnId === bubbleId) return;
+  const highlight = closestHighlight(event.target, event);
+  if (highlight && highlight.getAttribute('data-whn-id') === bubbleId) return;
   closeBubble();
 }
 
@@ -444,6 +465,7 @@ function bindPage() {
   document.addEventListener('click', onClick, true);
   document.addEventListener('mousedown', onMouseDown, true);
   document.addEventListener('scroll', onScroll, true);
+  document.addEventListener('mousemove', onMouseMove, { capture: true, passive: true });
   document.addEventListener('selectionchange', () => {
     if (pointerInUi || ui.bubbleOpen()) return;
     const selection = window.getSelection();

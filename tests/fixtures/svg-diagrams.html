@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MindPowers CLI load 与热更新 · 评审学习页 (v4-draft)</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#1d2433;--mute:#5b6478;--pri:#2f6fed;--ok:#18a058;--warn:#e6a23c;--bad:#d03050;--line:#dfe3ec}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 -apple-system,"PingFang SC","Noto Sans CJK SC","Noto Sans SC","Microsoft YaHei",sans-serif}
+header{background:linear-gradient(135deg,#2f6fed,#6a4cf0);color:#fff;padding:22px 16px 18px}
+header h1{font-size:20px;margin:0 0 6px;line-height:1.35}
+header p{margin:2px 0;font-size:13px;opacity:.92}
+nav{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap;padding:8px 10px}
+nav a{display:inline-block;margin-right:6px;padding:4px 10px;border-radius:14px;background:#eef2fd;color:var(--pri);text-decoration:none;font-size:13px}
+main{max-width:980px;margin:0 auto;padding:12px}
+section{background:var(--card);border-radius:12px;padding:14px;margin:12px 0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+h2{font-size:18px;margin:0 0 8px;border-left:4px solid var(--pri);padding-left:8px}
+h3{font-size:15.5px;margin:14px 0 6px}
+.cite{display:inline-block;font-size:11.5px;color:var(--mute);background:#f0f2f7;border-radius:4px;padding:0 5px;margin-left:4px;white-space:nowrap}
+.doubt{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:var(--warn);border-radius:4px;padding:0 6px;margin-left:4px}
+code{background:#f2f4f8;border-radius:4px;padding:0 4px;font-size:13px;word-break:break-all}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:480px}
+th,td{border:1px solid var(--line);padding:6px 7px;text-align:left;vertical-align:top}
+th{background:#f3f5fa}
+svg{width:100%;height:auto;display:block}
+.svgbox{border:1px solid var(--line);border-radius:10px;background:#fbfcff;padding:6px;margin:8px 0}
+ul,ol{padding-left:20px;margin:6px 0}
+.pill{display:inline-block;border-radius:10px;padding:0 8px;font-size:12.5px;color:#fff}
+.g{background:var(--ok)}.r{background:var(--bad)}.y{background:var(--warn)}.b{background:var(--pri)}
+details{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0;background:#fcfcfe}
+summary{cursor:pointer;font-weight:600}
+.q{border-left:4px solid var(--bad);background:#fff7f8;padding:8px 10px;margin:8px 0;border-radius:6px}
+.q b.n{color:var(--bad)}
+.key{border-left:4px solid var(--ok);background:#f4fbf7;padding:8px 10px;border-radius:6px;margin:8px 0}
+.flow{stroke-dasharray:6 5;animation:dash 1.2s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-22}}
+.pulse{animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.flow,.pulse{animation:none}}
+@media(min-width:760px){body{font-size:16px}header{padding:28px 32px}header h1{font-size:26px}main{padding:18px}}
+footer{text-align:center;color:var(--mute);font-size:12px;padding:20px}
+</style></head><body>
+<header>
+<h1>mindpowers load 与热更新 · 设计评审学习页</h1>
+<p>源文档：2026-10-14 MindPowers-CLI-load与热更新设计-v4草稿.md（文档版本 v4-draft）</p>
+<p>本页只复述原文；<span class="doubt">存疑</span> = 本页的推断或原文未写明处；<span class="cite">§x</span> = 原文章节。</p>
+</header>
+<nav><a href="#s0">一句话</a><a href="#s1">核心约束</a><a href="#s2">load 流程</a><a href="#s3">热更新</a><a href="#s4">锁</a><a href="#s5">状态机</a><a href="#s6">失败场景</a><a href="#s7">退出码</a><a href="#s8">缓存/gc</a><a href="#s9">凭据</a><a href="#s10">范围外</a><a href="#qa">评审待确认问题</a></nav>
+<main>
+
+<section id="s0"><h2>0. 一句话理解</h2>
+<p><code>mindpowers load</code> 接收一份<b>完整 pin 集合</b>，把每个 pin 物化成<b>发布后不再修改</b>的 checkout，再在<b>同一进程</b>里走现有 <code>sync --input</code> 的校验与投影。<b>热更新就是用新的完整集合再执行一次 load。</b><span class="cite">§0 摘要</span></p>
+<div class="key">pin = 规范化 <code>repoUrl</code> + 小写 full-40 <code>commitId</code>；<code>version</code>/<code>branch</code> 只是取对象的提示。<span class="cite">§2 术语</span></div>
+<h3>v4 相对 v3.1 写死的三条决议 <span class="cite">§0 / §3</span></h3>
+<ol>
+<li>源树按 commit 不可变；投影仍复用<b>非事务</b>的 sync，崩溃后 workspace 可能混有两套 pin，但状态文件能指出是哪两套，并提供不依赖新 pin 网络的恢复。</li>
+<li><code>data-dir</code> 允许被多个 <code>target-root</code> 共享；安全边界是「发布后的目录不再写入」+ 锁。</li>
+<li><code>skipped[]</code> 非空默认视为未完整应用：退出码 5，不晋升 applied；需 <code>--allow-skipped</code> 才接受。</li>
+</ol>
+</section>
+
+<section id="s1"><h2>1. 三条核心约束 + 推进 pin 的唯一条件</h2>
+<ol>
+<li>每次传入的是这份 workspace 应拥有的<b>全部</b>知识仓，不是增量补仓。</li>
+<li>全部准备成功之后才调用 sync；任一仓准备失败，整次失败，不调用 sync。</li>
+<li>load 成功只表示 <b>applied</b>；Agent 何时使用新知识（<b>activated</b>）由调用方负责。</li>
+</ol><span class="cite">§0 摘要</span>
+<div class="key">控制面只有在 stdout JSON <code>result == "apply_ok"</code> <b>且</b> <code>dry_run == false</code> 时才可推进 pin。只看退出码 0 不够：<code>--dry-run</code> 也以 0 退出。<span class="cite">§0 / §10 / §14</span></div>
+<h3>关键术语 <span class="cite">§2</span></h3>
+<div class="tbl"><table><tr><th>术语</th><th>含义</th></tr>
+<tr><td>完整集合</td><td>本次 workspace 应拥有的全部知识仓；空数组合法，表示清空投影</td></tr>
+<tr><td>identity</td><td>多仓 <code>memoryStoreId</code> 或单仓 <code>--identity</code></td></tr>
+<tr><td>仓键</td><td><code>sha256(规范化 repoUrl)</code> 64 位小写十六进制，不含 commit</td></tr>
+<tr><td>checkout</td><td><code>data-dir/checkouts/&lt;仓键&gt;/&lt;commitId&gt;/</code>，发布后不再写入</td></tr>
+<tr><td>applied</td><td>状态文件已是 applied 且本次 result 为 apply_ok</td></tr>
+<tr><td>脏</td><td>相位是 applying 或 apply_failed，投影字节可能是混合的</td></tr>
+<tr><td>set_id</td><td>规范化集合的内容哈希（含 adapter、data_dir、target_root、每个 binding 的 identity/url/commit/scenes；不含 version、branch）<span class="cite">§5.4</span></td></tr>
+</table></div>
+</section>
+
+<section id="s2"><h2>2. load 流程图</h2>
+<div class="svgbox"><svg viewBox="0 0 360 640" role="img" aria-label="load 流程">
+<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#5b6478"/></marker></defs>
+<g font-size="12.5" text-anchor="middle">
+<rect x="70" y="8" width="220" height="40" rx="8" fill="#eef2fd" stroke="#2f6fed"/><text x="180" y="25">调用方（Piston / CoWork）</text><text x="180" y="41" font-size="11" fill="#5b6478">给出完整 pin 集合</text>
+<line x1="180" y1="48" x2="180" y2="72" stroke="#5b6478" class="flow" marker-end="url(#ar)"/>
+<rect x="40" y="74" width="280" height="40" rx="8" fill="#fff" stroke="#5b6478"/><text x="180" y="91">① 参数 / JSON 校验（未抢锁）</text><text x="180" y="107" font-size="11" fill="#d03050">失败 → 退出码 2 invalid_input</text>
+<line x1="180" y1="114" x2="180" y2="136" stroke="#5b6478" class="flow" marker-end="url(#ar)"/>
+<rect x="40" y="138" width="280" height="54" rx="8" fill="#fff" stroke="#5b6478"/><text x="180" y="155">② 取锁：load.lock 独占 → gc.lock 共享</text><text x="180" y="171" font-size="11" fill="#d03050">超时 → 退出码 3 lock_busy</text><text x="180" y="186" font-size="11" fill="#5b6478">写 consumer 文件，读状态文件</text>
+<line x1="180" y1="192" x2="180" y2="214" stroke="#5b6478" class="flow" marker-end="url(#ar)"/>
+<rect x="40" y="216" width="280" height="40" rx="8" fill="#fff" stroke="#5b6478"/><text x="180" y="233">③ 根据相位决定：正常 / 重放 / 恢复 / 拒绝</text><text x="180" y="249" font-size="11" fill="#d03050">脏且换集合 → 退出码 4</text>
+<line x1="180" y1="256" x2="180" y2="278" stroke="#5b6478" class="flow" marker-end="url(#ar)"/>
+<rect x="20" y="280" width="320" height="70" rx="8" fill="#fff8ec" stroke="#e6a23c"/><text x="180" y="298" font-weight="700">④ 准备（按 (仓键, commitId) 排序，逐个）</text><text x="180" y="315" font-size="11">checkout 锁内：完整则复用（不联网）</text><text x="180" y="330" font-size="11">不存在则 .incoming 克隆 → rename 发布</text><text x="180" y="345" font-size="11">检查 config.yaml 与 scenes</text>
+<line x1="180" y1="350" x2="180" y2="376" stroke="#5b6478" class="flow" marker-end="url(#ar)"/>
+<text x="290" y="370" font-size="11" fill="#d03050">任一仓失败</text>
+<line x1="300" y1="350" x2="300" y2="392" stroke="#d03050" marker-end="url(#ar)"/>
+<rect x="250" y="394" width="104" height="52" rx="8" fill="#fff0f2" stroke="#d03050"/><text x="302" y="412" font-size="11">退出码 1</text><text x="302" y="426" font-size="11">不调 sync</text><text x="302" y="440" font-size="11">投影字节不改</text>
+<rect x="20" y="378" width="222" height="50" rx="8" fill="#fff" stroke="#5b6478"/><text x="131" y="396" font-size="12">⑤ 写 applying + intent</text><text x="131" y="412" font-size="11">临时文件→fsync→rename→fsync 目录</text>
+<line x1="131" y1="428" x2="131" y2="450" stroke="#5b6478" class="flow" marker-end="url(#ar)"/>
+<rect x="20" y="452" width="222" height="36" rx="8" fill="#eef2fd" stroke="#2f6fed"/><text x="131" y="475">⑥ 同进程调用 sync</text>
+<line x1="70" y1="488" x2="70" y2="520" stroke="#18a058" marker-end="url(#ar)"/>
+<line x1="190" y1="488" x2="250" y2="520" stroke="#d03050" marker-end="url(#ar)"/>
+<rect x="8" y="522" width="150" height="70" rx="8" fill="#effaf3" stroke="#18a058" class="pulse"/><text x="83" y="540" font-size="11.5">skipped 空 或 allow-skipped</text><text x="83" y="556" font-size="11.5">写 applied + fsync</text><text x="83" y="572" font-size="11.5" font-weight="700">退出码 0 apply_ok</text><text x="83" y="586" font-size="10.5" fill="#5b6478">写盘失败→1 state_write_failed</text>
+<rect x="176" y="522" width="178" height="70" rx="8" fill="#fff0f2" stroke="#d03050"/><text x="265" y="540" font-size="11.5">sync 报错/投影被跳过</text><text x="265" y="556" font-size="11.5">→ apply_failed，退出码 1</text><text x="265" y="572" font-size="11.5">skipped 非空无旗标</text><text x="265" y="586" font-size="11.5">→ apply_failed，退出码 5</text>
+<text x="180" y="622" font-size="11" fill="#5b6478">⑦ 按相反顺序释放锁</text>
+</g></svg></div>
+<p>依据 <span class="cite">§0</span><span class="cite">§7 锁的获取顺序</span><span class="cite">§8.1</span><span class="cite">§8.3</span>。</p>
+<h3>快路径（no-op）<span class="cite">§8.2</span></h3>
+<div class="tbl"><table><tr><th>条件</th><th>行为</th></tr>
+<tr><td>checkout 已通过完整性检查</td><td>该仓不再 fetch</td></tr>
+<tr><td>相位 applied + set_id 相同 + 每个 checkout 完整 + <code>managed_tree</code> 与现场一致</td><td>不调 sync，<code>apply_ok</code> 且 <code>noop=true</code></td></tr>
+<tr><td>set_id 相同但 managed_tree 为空或现场不一致</td><td>跳过 fetch，但必须调用 sync</td></tr>
+<tr><td>相位 applying / apply_failed</td><td>禁止 no-op</td></tr></table></div>
+<h3>fetch 顺序（只在 .incoming 内）<span class="cite">§6.4</span></h3>
+<ol><li><code>git fetch --depth=1 origin &lt;commitId&gt;</code></li><li>仍无目标且 version 非空：fetch <code>refs/tags/&lt;version&gt;</code></li><li>仍无且 branch 非空：fetch 该分支（不得 checkout 分支尖端）</li><li>仍无：完整 <code>git fetch origin</code></li><li>仍无：删 incoming，<code>commit_unreachable</code>；不得回退到 branch HEAD</li></ol>
+<p>之后 <code>checkout --detach</code> → <code>reset --hard</code> → <code>clean -fdx</code>（只允许在 incoming）。拒绝 <code>.gitmodules</code>、LFS、逃出 checkout 的符号链接。</p>
+<h3>完整性 6 条 <span class="cite">§6.3</span></h3>
+<ol><li>HEAD detached 且等于 pin</li><li><code>git status --porcelain=v1 --ignored</code> 为空</li><li><code>HEAD^{tree}</code> 与 meta 的 tree 一致</li><li>根上有 <code>.mindpowers/config.yaml</code>（不向上找）</li><li>origin URL 等于规范化 URL，<code>.git/config</code> 无 userinfo/token</li><li>路径仍在 <code>data-dir/checkouts/</code> 内</li></ol>
+</section>
+
+<section id="s3"><h2>3. 热更新机制</h2>
+<div class="svgbox"><svg viewBox="0 0 360 330" role="img" aria-label="热更新时序">
+<defs><marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#2f6fed"/></marker></defs>
+<g font-size="12" text-anchor="middle">
+<rect x="6" y="6" width="100" height="30" rx="6" fill="#eef2fd" stroke="#2f6fed"/><text x="56" y="26">控制面</text>
+<rect x="130" y="6" width="100" height="30" rx="6" fill="#fff8ec" stroke="#e6a23c"/><text x="180" y="26">mindpowers load</text>
+<rect x="254" y="6" width="100" height="30" rx="6" fill="#effaf3" stroke="#18a058"/><text x="304" y="26">Agent</text>
+<line x1="56" y1="36" x2="56" y2="320" stroke="#c9cfdc"/><line x1="180" y1="36" x2="180" y2="320" stroke="#c9cfdc"/><line x1="304" y1="36" x2="304" y2="320" stroke="#c9cfdc"/>
+<text x="56" y="58" font-size="11">① 算新的完整集合</text>
+<line x1="56" y1="74" x2="176" y2="74" stroke="#2f6fed" class="flow" marker-end="url(#a2)"/><text x="116" y="68" font-size="11">② 再次 load</text>
+<rect x="232" y="84" width="122" height="44" rx="6" fill="#fff0f2" stroke="#d03050"/><text x="293" y="101" font-size="10.5">持锁期间</text><text x="293" y="117" font-size="10.5">不得让 Agent 读</text>
+<rect x="140" y="84" width="80" height="80" rx="6" fill="#fff8ec" stroke="#e6a23c" class="pulse"/><text x="180" y="110" font-size="11">准备</text><text x="180" y="128" font-size="11">sync</text><text x="180" y="146" font-size="11">写状态</text>
+<line x1="176" y1="182" x2="60" y2="182" stroke="#2f6fed" class="flow" marker-end="url(#a2)"/><text x="116" y="176" font-size="11">JSON 结果</text>
+<text x="56" y="206" font-size="11">③ apply_ok 且</text><text x="56" y="221" font-size="11">非 dry-run</text><text x="56" y="236" font-size="11">才推进 pin</text>
+<line x1="60" y1="262" x2="300" y2="262" stroke="#18a058" class="flow" marker-end="url(#a2)"/><text x="180" y="256" font-size="11">④ 调用方决定 reload / 新 session</text>
+<text x="304" y="290" font-size="11" fill="#18a058">activated</text>
+<text x="180" y="312" font-size="10.5" fill="#5b6478">load 只保证到 applied；activated 由调用方负责</text>
+</g></svg></div>
+<p><span class="cite">§4.3 热更新</span><span class="cite">§0</span>。不新增 <code>hot-update</code> 命令 <span class="cite">§4.3 / §15</span>。</p>
+<div class="key">锁只阻止第二个 load，阻止不了已经打开目录的进程。sync 写链接不是一个系统调用，正在读的 Agent 可能同时看到旧 Skill 和新 Skill。<span class="cite">§4.3</span></div>
+<h3>调用方逻辑 <span class="cite">§4.3</span></h3>
+<div class="tbl"><table><tr><th>结果</th><th>控制面</th><th>Agent</th></tr>
+<tr><td>apply_ok 且 noop=true</td><td>pin 保持</td><td>不必 reload</td></tr>
+<tr><td>apply_ok 且 changes 非空</td><td>推进 pin</td><td>reload 或新 session</td></tr>
+<tr><td>apply_ok 且 accepted_partial=true</td><td>调用方自选接受，才可推进</td><td>按剩余已投影能力决定</td></tr>
+<tr><td>其他 result</td><td>不推进</td><td>不当成生效</td></tr></table></div>
+<h3>changes.repositories 五类 <span class="cite">§10.1</span></h3>
+<p><code>added</code>/<code>removed</code>：identity 只在一侧；<code>updated</code>：identity、URL 相同，commit 或 scenes 变；<code>identity_moved</code>：identity 同、URL 变；<code>repo_rebound</code>：URL 同、identity 变。技能快照来自 sync 实际投影，不另扫描。</p>
+</section>
+
+<section id="s4"><h2>4. 锁与并发</h2>
+<div class="svgbox"><svg viewBox="0 0 360 230" role="img" aria-label="锁层级">
+<g font-size="12" text-anchor="middle">
+<rect x="10" y="10" width="340" height="210" rx="10" fill="#eef2fd" stroke="#2f6fed"/><text x="180" y="30" font-weight="700">1. target-root/.mindpowers/load.lock（独占）</text><text x="180" y="46" font-size="10.5">每个 target-root 串行；默认 --lock-timeout=0s；永不 unlink</text>
+<rect x="30" y="58" width="300" height="150" rx="10" fill="#fff8ec" stroke="#e6a23c"/><text x="180" y="78" font-weight="700">2. data-dir/locks/gc.lock（共享）</text><text x="180" y="94" font-size="10.5">多个 load 可并行；gc 拿独占且不拿 workspace 锁 → 无环</text>
+<rect x="50" y="108" width="260" height="88" rx="10" fill="#effaf3" stroke="#18a058"/><text x="180" y="128" font-weight="700">3. checkout 锁（一次只持一个）</text><text x="180" y="146" font-size="10.5">locks/checkouts/&lt;仓键&gt;/&lt;commitId&gt;.lock</text><text x="180" y="164" font-size="10.5">按 (仓键, commitId) 排序</text><text x="180" y="182" font-size="10.5">同 commit 后到者复用，不二次克隆</text>
+</g></svg></div>
+<ul><li>不支持 flock（ENOTSUP）→ 退出码 1 <code>lock_unsupported</code>，不得降级。<span class="cite">§6.1</span></li>
+<li>崩溃/SIGKILL 由内核释放 flock，无陈旧锁；不提供打破他人锁的开关。<span class="cite">§7</span></li>
+<li>sync 同进程调用时不得再锁 load.lock（否则自锁）。<span class="cite">§7</span></li>
+<li><code>--dry-run</code> 不拿 workspace 锁，只拿共享 gc.lock 与 checkout 锁。<span class="cite">§12</span></li></ul>
+</section>
+
+<section id="s5"><h2>5. 状态机（load-state.json 的 phase）</h2>
+<p>原文 mermaid 图只有 6 条边；下图<b>实线</b>为原文图中的边，<b>橙色虚线</b>为本页根据 §8.1/§8.2/§9 表格文字补出的路径 <span class="doubt">存疑</span>（原图未画，需作者确认）。</p>
+<div class="svgbox" id="statefig"><svg viewBox="0 0 360 420" role="img" aria-label="状态机">
+<defs><marker id="a3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#1d2433"/></marker><marker id="a4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8z" fill="#e6a23c"/></marker></defs>
+<g font-size="12" text-anchor="middle">
+<circle cx="180" cy="18" r="7" fill="#1d2433"/>
+<line x1="180" y1="25" x2="180" y2="52" stroke="#1d2433" marker-end="url(#a3)"/><text x="245" y="44" font-size="10.5">没有状态文件</text>
+<rect x="120" y="54" width="120" height="36" rx="18" fill="#f3f5fa" stroke="#5b6478"/><text x="180" y="77">干净（无文件）</text>
+<line x1="180" y1="90" x2="180" y2="148" stroke="#1d2433" marker-end="url(#a3)"/><text x="244" y="124" font-size="10.5">准备成功，开始 sync</text>
+<rect x="110" y="150" width="140" height="40" rx="20" fill="#fff8ec" stroke="#e6a23c" class="pulse"/><text x="180" y="168" font-weight="700">applying</text><text x="180" y="183" font-size="10">应用中（脏）</text>
+<line x1="140" y1="190" x2="70" y2="290" stroke="#1d2433" marker-end="url(#a3)"/><text x="66" y="232" font-size="10.5">sync 成功</text><text x="66" y="246" font-size="10.5">且 fsync 完成</text>
+<line x1="220" y1="190" x2="290" y2="290" stroke="#1d2433" marker-end="url(#a3)"/><text x="300" y="224" font-size="10.5">sync 失败/</text><text x="300" y="238" font-size="10.5">partial 拒绝/</text><text x="300" y="252" font-size="10.5" fill="#d03050">进程消失*</text>
+<rect x="10" y="292" width="120" height="40" rx="20" fill="#effaf3" stroke="#18a058"/><text x="70" y="310" font-weight="700">applied</text><text x="70" y="325" font-size="10">已应用</text>
+<rect x="230" y="292" width="124" height="40" rx="20" fill="#fff0f2" stroke="#d03050"/><text x="292" y="310" font-weight="700">apply_failed</text><text x="292" y="325" font-size="10">应用失败（脏）</text>
+<path d="M30,292 C10,220 60,175 108,168" fill="none" stroke="#1d2433" marker-end="url(#a3)"/><text x="40" y="196" font-size="10.5">新的</text><text x="40" y="210" font-size="10.5">完整集合</text>
+<path d="M330,292 C350,220 300,175 252,172" fill="none" stroke="#1d2433" marker-end="url(#a3)"/><text x="322" y="196" font-size="10.5">同 set_id</text><text x="322" y="210" font-size="10.5">重放</text>
+<path d="M300,332 C300,380 240,390 200,380 C170,372 170,240 175,192" fill="none" stroke="#e6a23c" stroke-dasharray="5 4" marker-end="url(#a4)"/><text x="262" y="372" font-size="10" fill="#b26b00">recover / force-retarget</text>
+<path d="M150,150 C120,120 120,110 140,92 M140,92 C150,110 170,130 166,150" fill="none" stroke="#e6a23c" stroke-dasharray="5 4" marker-end="url(#a4)"/><text x="88" y="110" font-size="10" fill="#b26b00">applying 自重放</text>
+<path d="M40,332 C40,370 100,370 100,332" fill="none" stroke="#e6a23c" stroke-dasharray="5 4" marker-end="url(#a4)"/><text x="70" y="384" font-size="10" fill="#b26b00">noop（不写状态）</text>
+<text x="180" y="400" font-size="10" fill="#d03050">* §8.3 说信号后相位停在 applying，</text><text x="180" y="414" font-size="10" fill="#d03050">与原图「进程消失→应用失败」不一致（见 Q1）</text>
+</g></svg></div>
+<h3>进入时相位 × 本次请求 <span class="cite">§9</span></h3>
+<div class="tbl"><table><tr><th>进入相位</th><th>请求</th><th>动作</th></tr>
+<tr><td>干净</td><td>任意合法集合</td><td>正常准备并应用</td></tr>
+<tr><td>脏</td><td>set_id = intent</td><td>重放（准备仍须全部成功）</td></tr>
+<tr><td>脏</td><td>set_id 不同，无旗标</td><td><span class="pill r">4</span> state_conflict，不改投影/intent</td></tr>
+<tr><td>脏</td><td><code>--recover=last-applied</code></td><td>intent←last_applied 再 sync，不 fetch；checkout 不完整则 rollback_unavailable</td></tr>
+<tr><td>脏</td><td><code>--force-retarget</code> + 新集合</td><td>放弃旧 intent；last_applied 保留到新 applied 写盘</td></tr></table></div>
+<p>脏时 JSON 带 <code>workspace_dirty:true</code>、<code>intent_set_id</code>、<code>last_applied_set_id</code>，让调用方知道混合只发生在这两套 pin 之间。<code>last_applied</code> 为 null 时 recover 返回 <code>nothing_to_recover</code>（退出码 4）。状态文件损坏 → <code>state_unreadable</code>/<code>state_unsupported</code>，不得当成干净覆盖。<span class="cite">§9</span></p>
+</section>
+
+<section id="s6"><h2>6. 边界与失败场景</h2>
+<div class="svgbox" id="failfig"><svg viewBox="0 0 360 470" role="img" aria-label="失败场景">
+<g font-size="11.5">
+<text x="180" y="16" text-anchor="middle" font-weight="700" font-size="13">失败发生在哪一段 → 投影会怎样</text>
+<rect x="6" y="28" width="348" height="78" rx="8" fill="#f3f5fa" stroke="#5b6478"/>
+<text x="14" y="46" font-weight="700">A. 输入校验 / 抢锁阶段</text>
+<text x="14" y="63">退出码 2（invalid_input）或 3（lock_busy）</text>
+<text x="14" y="80">未写投影；只可能创建了 .mindpowers 控制目录</text>
+<text x="14" y="97" fill="#5b6478">§7 第 1–3 步</text>
+<rect x="6" y="114" width="348" height="94" rx="8" fill="#fff8ec" stroke="#e6a23c"/>
+<text x="14" y="132" font-weight="700">B. 准备阶段（fetch / 完整性 / scenes）</text>
+<text x="14" y="149">退出码 1 prepare_failed；不调 sync</text>
+<text x="14" y="166">进入时干净 → 保持干净，投影字节不变</text>
+<text x="14" y="183">进入时脏 → 保持原相位与 intent</text>
+<text x="14" y="200" fill="#5b6478">§8.1；已发布的其他 checkout 作为缓存留下 §6.2</text>
+<rect x="6" y="216" width="348" height="110" rx="8" fill="#fff0f2" stroke="#d03050"/>
+<text x="14" y="234" font-weight="700">C. 应用阶段（sync 进行中）</text>
+<text x="14" y="251">sync 报错 → apply_failed 退出 1</text>
+<text x="14" y="268">skipped 非空无旗标 → apply_failed 退出 5</text>
+<text x="14" y="285">SIGTERM/SIGKILL → 停在 applying；不在信号里再 sync</text>
+<text x="14" y="302" fill="#d03050" font-weight="700">workspace 可能混有两套 pin 的链接</text>
+<text x="14" y="319" fill="#5b6478">§8.3、§9、§17.1</text>
+<rect x="6" y="334" width="348" height="62" rx="8" fill="#fff0f2" stroke="#d03050"/>
+<text x="14" y="352" font-weight="700">D. sync 成功但状态写盘失败</text>
+<text x="14" y="369">退出 1 state_write_failed，相位不得宣称 applied</text>
+<text x="14" y="386" fill="#5b6478">§8.3 第 5 步；此后相位具体值 <tspan fill="#b26b00" font-weight="700">存疑</tspan>（Q2）</text>
+<rect x="6" y="404" width="348" height="60" rx="8" fill="#effaf3" stroke="#18a058"/>
+<text x="14" y="422" font-weight="700">恢复路径</text>
+<text x="14" y="439">同集重放 / --recover=last-applied（不联网）/ --force-retarget</text>
+<text x="14" y="456" fill="#5b6478">§9；恢复本身也是 sync，可能再失败，不是磁盘事务</text>
+</g></svg></div>
+<h3>审查故障链在 v4 里的结局 <span class="cite">§9</span></h3>
+<p>应用写到一半 → 对新 pin 重试又在准备阶段失败：相位仍脏、两套 id 都在；准备失败不擦掉它们、不调 sync；只要旧 checkout 在，<code>--recover=last-applied</code> 不走网络。</p>
+<h3>其他边界 </h3>
+<ul>
+<li>sync「没有 target 仍返回成功」的 OpenClaw 兼容路径 → <code>projection_not_applied</code>。<span class="cite">§5.6</span></li>
+<li>只有显式空 <code>bindings: []</code> 能清空；过滤失败产生的空列表不得变成清空。<span class="cite">§14</span></li>
+<li>同一请求内 identity 重复 / URL 重复 / 同 URL 两 commit → 退出码 2 <code>duplicate_binding</code>，未抢锁。<span class="cite">§5.3</span></li>
+<li><code>data-dir</code> 与 <code>target-root</code> 相等或包含 → <code>path_overlap</code>；<code>/var/mp/repos</code> 与 <code>/var/mp/repos-backup</code> 不算包含。<span class="cite">§6.1</span></li>
+<li>已发布目录坏了 → <code>cache_corrupt</code>，不原地修，只能 gc <code>--drop-corrupt</code>。<span class="cite">§6.2</span></li>
+<li>子模块 / LFS / 符号链接逃逸 → 直接失败。<span class="cite">§6.4</span></li>
+<li>磁盘满 → <code>disk_full</code>，只删自己的 incoming。<span class="cite">§6.5</span></li>
+<li>sync 不得删掉 <code>target-root/.mindpowers/</code>。<span class="cite">§9</span></li>
+<li>威胁模型：不防御同一用户故意篡改 git 索引。<span class="cite">§6.3</span></li>
+</ul>
+</section>
+
+<section id="s7"><h2>7. 退出码与 result <span class="cite">§10</span></h2>
+<div class="tbl"><table><tr><th>码</th><th>result</th><th>含义</th><th>可推进 pin</th></tr>
+<tr><td><span class="pill g">0</span></td><td>apply_ok</td><td>状态 applied（含 no-op、显式 allow-skipped 的 partial）</td><td>能</td></tr>
+<tr><td><span class="pill g">0</span></td><td>dry_run_ok</td><td>计划有效，相位未改</td><td>不能</td></tr>
+<tr><td><span class="pill r">1</span></td><td>prepare_failed</td><td>准备失败，未调 sync</td><td>不能</td></tr>
+<tr><td><span class="pill r">1</span></td><td>apply_failed</td><td>sync 失败、投影被跳过、状态写盘失败、恢复所需 checkout 不可用</td><td>不能</td></tr>
+<tr><td><span class="pill y">2</span></td><td>invalid_input</td><td>参数或 JSON 不合法</td><td>不能</td></tr>
+<tr><td><span class="pill b">3</span></td><td>lock_busy</td><td>超时未取到锁，未改投影</td><td>能重试，不能推进</td></tr>
+<tr><td><span class="pill y">4</span></td><td>state_conflict</td><td>脏状态换集合 / 无可恢复 last_applied</td><td>不能</td></tr>
+<tr><td><span class="pill r">5</span></td><td>apply_partial</td><td>skipped 非空且未 allow-skipped，相位 apply_failed</td><td>不能</td></tr></table></div>
+<p>stdout 只输出一个 JSON 对象，日志走 stderr；<code>--help</code> 例外。警告不改变退出码。<span class="cite">§10 / §10.4</span></p>
+</section>
+
+<section id="s8"><h2>8. 磁盘布局、发布与 gc</h2>
+<pre style="overflow-x:auto;background:#f3f5fa;padding:8px;border-radius:8px;font-size:12px">data-dir/
+  checkouts/&lt;仓键&gt;/&lt;commitId&gt;/   发布后的 git 工作树
+  meta/&lt;仓键&gt;/&lt;commitId&gt;.json    工作树外的发布记录
+  locks/gc.lock
+  locks/checkouts/&lt;仓键&gt;/&lt;commitId&gt;.lock
+  consumers/&lt;sha256(target-root)&gt;.json
+  .incoming/&lt;pid&gt;-&lt;uuid&gt;/        临时克隆
+target-root/
+  .mindpowers/load.lock           只 flock，永不 unlink
+  .mindpowers/load-state.json     状态机</pre><span class="cite">§6</span>
+<ul><li>发布：incoming 克隆 → rename 到最终路径 → meta 临时文件+rename；目标已存在则删自己的 incoming 回到检查。<span class="cite">§6.2</span></li>
+<li>成功路径上不删 checkout；解绑只保证下次 sync 不再投影。<span class="cite">§3 / §6.5</span></li>
+<li>gc：独占 gc.lock；钉住 consumer 状态里 <code>last_applied</code>/<code>intent</code> 引用的 commit，及 <code>published_at</code> 新于 <code>--max-age</code>（默认 168h）的；<code>consumers/</code> 不存在 → <code>registry_missing</code>；为空默认不删，需 <code>--allow-empty-registry</code>。默认偏向漏删。<span class="cite">§6.5</span></li>
+<li>磁盘上限由调用方根据 <code>cache_bytes</code> 决定，不做隐式配额删除。<span class="cite">§6.5 / §15</span></li></ul>
+</section>
+
+<section id="s9"><h2>9. 凭据与 SSH <span class="cite">§11</span></h2>
+<ul><li>单仓 HTTPS：<code>--token-file</code>；多仓：<code>--credentials-file</code>，键为 identity，每条恰好 <code>token</code> 或 <code>tokenFile</code> 之一。</li>
+<li>token 经 <code>.incoming</code> 旁路的 <code>GIT_ASKPASS</code> 脚本（0700）交给 git，rename 发布前删除。https URL 带 userinfo → <code>credential_in_url</code>。</li>
+<li>凭据字节不得出现在 argv、URL、stdout、stderr、发布后的 <code>.git/config</code>。</li>
+<li>默认不删凭据文件；<code>--delete-credentials-after-read</code> 时无论准备是否成功都在退出前删除；删除失败只发警告，不改 apply_ok。</li>
+<li>SSH：只用已有 agent 和 <code>GIT_SSH_COMMAND</code>；不改 known_hosts、不关主机校验、不在 SSH/HTTPS 间自动换协议。</li></ul>
+</section>
+
+<section id="s10"><h2>10. v1 范围外 <span class="cite">§15</span></h2>
+<ul><li>整个 workspace / adapter 目录换成一代符号链接（原子切换）</li><li>解绑当下删 checkout；自动配额删除</li><li>让运行中的 Agent 生效（reload）</li><li>新 <code>hot-update</code> 命令；把 <code>init</code> 改成装载</li><li>同一请求投影同一仓两个 commit；子模块与 LFS</li><li>信号处理里自动再 sync</li></ul>
+<p>实现顺序：冻结 JSON → 规范化/凭据 → 发布 → 锁+状态机+consumer register → 接 sync → 恢复/dry-run/gc → 文档 → CoWork e2e。<span class="cite">§16</span></p>
+</section>
+
+<section id="qa"><h2>评审待确认问题</h2>
+<p>以下是阅读原文时发现的矛盾、缺口或未定义处，均为评审意见，需作者确认。</p>
+
+<div class="q"><b class="n">Q1 矛盾：进程被杀后相位是 applying 还是 apply_failed？</b><br>§9 mermaid 写「应用中 → 应用失败：sync 失败、partial 被拒绝、或<b>进程消失</b>」；但 §8.3 写「信号若发生在 sync 已开始之后，相位停在 <code>applying</code>」，§16 测试也期望 SIGKILL 后「相位停在 applying」。进程已死无法写 apply_failed，建议改图。<span class="cite">§8.3</span><span class="cite">§9</span><span class="cite">§16</span></div>
+
+<div class="q"><b class="n">Q2 缺口：state_write_failed 之后相位是什么？</b><br>§8.3 第 5 步只说「相位不得宣称 applied」。此时 sync 已成功、写 applied 失败，磁盘上大概率仍是 applying（第 1 步写的），但原文未写明；下次调用是否按「同 set_id 重放」处理也未说明。<span class="cite">§8.3</span> <span class="doubt">存疑</span></div>
+
+<div class="q"><b class="n">Q3 缺口：状态机图漏边。</b><br>§9 表格允许「脏 + set_id 等于 intent → 重放」，入口相位可以是 <code>applying</code>（如 SIGKILL 后），但图里没有 applying 的自环；<code>--recover</code>、<code>--force-retarget</code> 从 apply_failed/applying 出发的边、以及 no-op（applied 不变）也都没画。<span class="cite">§9</span><span class="cite">§8.2</span></div>
+
+<div class="q"><b class="n">Q4 歧义：--force-retarget 准备失败时 intent 怎么处理？</b><br>§9 说 force-retarget「放弃旧 intent，按新集合走准备和应用」；§8.1 说进入时已脏且准备失败则「保持原来的相位和 intent」。放弃旧 intent 是在准备成功写 applying 时才发生，还是一开始就发生，原文未明确。<span class="cite">§8.1</span><span class="cite">§9</span></div>
+
+<div class="q"><b class="n">Q5 缺口：apply_ok、noop=false 但 changes 为空的情况。</b><br>§8.2 规定 set_id 相同但 managed_tree 为空/不一致时「必须调用 sync」，这会返回 noop=false 而仓库与技能 diff 可能为空。§4.3 调用方表只覆盖 noop=true、changes 非空、accepted_partial 三种，这种情况是否 reload 未定义。<span class="cite">§4.3</span><span class="cite">§8.2</span><span class="cite">§10.1</span></div>
+
+<div class="q"><b class="n">Q6 矛盾/缺口：复用 checkout 时如何做 version 核对？</b><br>§6.2 复用「不访问网络」，§8.2 已完整的仓「不再 fetch」；而 §6.4 版本警告（version_mismatch / version_unresolved / version_check_skipped）依赖解析标签。若第 1 步按 SHA 已取到，也不会 fetch 标签。复用或 SHA 直取时是否另做一次网络核对、还是一律 version_check_skipped，原文未说。<span class="cite">§6.2</span><span class="cite">§6.4</span><span class="cite">§8.2</span></div>
+
+<div class="q"><b class="n">Q7 缺口：--drop-corrupt 与 max-age 的交互。</b><br>§6.2 说坏目录「排除引用之后用 <code>gc --drop-corrupt</code> 删掉它，再重试」；但 §6.5 表格要求「坏掉、无引用、<b>且超过 max-age</b>」才删，而 gc 又钉住 published_at 新于 max-age（默认 168h）的目录。刚发布就损坏的目录要等 7 天或改 max-age，§6.2 的修复说法不完整。<span class="cite">§6.2</span><span class="cite">§6.5</span></div>
+
+<div class="q"><b class="n">Q8 缺口：gc 的 CLI 合同不完整。</b><br>§6.5 正文提到 <code>--forget-missing</code>、<code>--allow-empty-registry</code>，但示例命令只列了四种；gc 的退出码、JSON 结构、<code>registry_missing</code> 的退出码都未在 §10 定义（§10.3 code 表里没有 registry_missing）。<span class="cite">§6.5</span><span class="cite">§10.3</span></div>
+
+<div class="q"><b class="n">Q9 缺口：consumer 文件指向不存在的状态文件。</b><br>§7 第 5 步在读状态（第 6 步）和准备之前就写 consumer 文件；§9 说干净状态准备失败「不创建（状态）文件」。gc 读到 consumer 但状态文件不存在时如何处理未定义。<span class="cite">§7</span><span class="cite">§9</span><span class="cite">§6.5</span></div>
+
+<div class="q"><b class="n">Q10 未定义字段：credential_delete_failed「该字段设为 true」。</b><br>§11 说删除失败时「并把该字段在 JSON 里设为 true」，但 JSON 示例与 §10 都没有这个顶层字段；§10.4 只把它列为 warning code。是 warnings 项还是独立布尔字段？<span class="cite">§11</span><span class="cite">§10.4</span></div>
+
+<div class="q"><b class="n">Q11 参数清单不全。</b><br><code>--git-username</code>（§11）、<code>--delete-credentials-after-read</code>（§4.4 互斥表 / §11）、<code>--input</code>、<code>--credentials-file</code> 等未出现在 §4.4「其他入口」或任何完整参数表中，冻结时需要一张全量参数表（§16 第 1 步要求先冻结输入）。<span class="cite">§4.4</span><span class="cite">§11</span><span class="cite">§16</span></div>
+
+<div class="q"><b class="n">Q12 归类疑问：state_unreadable / rollback_unavailable 的 result。</b><br>§10.3 把 <code>state_unreadable</code>/<code>state_unsupported</code> 归为 <code>apply_failed</code>，但此时并未调用 sync，§10 表对 apply_failed 的含义是「sync 失败…」。是否应归为独立 result 以免控制面误判？<span class="cite">§10</span><span class="cite">§10.3</span></div>
+
+<div class="q"><b class="n">Q13 缺口：持锁最长时长。</b><br><code>--fetch-timeout</code> 是「单次 git fetch」上限（默认 300s）；§6.4 一个仓最多 4 次 fetch，多仓串行准备，整次 load 持 workspace 锁的上限未定义，而持锁期间调用方不得让 Agent 读 workspace（§4.3）。<span class="cite">§4.3</span><span class="cite">§4.4</span><span class="cite">§6.4</span></div>
+
+<div class="q"><b class="n">Q14 竞态：dry-run 不拿 workspace 锁却读相位。</b><br>§12 dry-run 不加 workspace 独占锁，但要判断「workspace 已经是脏的 → 退出码 4」。与并发正式 load 同时运行时可能读到中间态，原文未说明可接受与否。<span class="cite">§12</span> <span class="doubt">存疑</span></div>
+
+<div class="q"><b class="n">Q15 一致性：scenes 顺序变化是否算 updated。</b><br>§5.4 规定 scene 顺序参与 set_id；§10.1 <code>updated</code> 条件是「commit 或 scenes 变了」。仅顺序变化时 set_id 不同、会调 sync，是否进入 <code>updated</code> 未明示。<span class="cite">§5.4</span><span class="cite">§10.1</span> <span class="doubt">存疑</span></div>
+
+<div class="q"><b class="n">Q16 依赖 sync 的新能力尚未确认。</b><br>合同依赖 sync 返回 <code>managed_tree</code>、技能快照、skipped 原因，以及「只投影列表、不删 .mindpowers、按 managedSourceRoot 清理」（§5.6、§8.2、§16 第 5 步）。§8.2 也承认「sync 若还给不出托管目录清单」——现有 sync 实际具备哪些能力、需改多少，原文未盘点。<span class="cite">§5.6</span><span class="cite">§8.2</span><span class="cite">§16</span></div>
+
+<div class="q"><b class="n">Q17 术语：原文 §16 第 4 步与 §17.3 对 consumer 使用了中文旧称，而非 register。</b><br>建议冻结前统一为「consumer register」「空 register」。<span class="cite">§16</span><span class="cite">§17.3</span></div>
+<p><b>共 17 条。</b></p>
+</section>
+</main>
+<footer>离线单文件 · 仅依据 v4-draft 原文 · 生成于 2026-10-14</footer>
+</body></html>

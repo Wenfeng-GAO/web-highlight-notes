@@ -33,3 +33,23 @@
   background: #ca8a04;
   vertical-align: 1px;
 }
+
+/* SVG text (#16): a <rect> drawn behind the <text>; the text itself is never touched. */
+rect.whn-svg-hl {
+  fill: rgba(250, 204, 21, 0.4) !important;
+  stroke: none !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+}
+
+rect.whn-svg-hl.whn-hover,
+rect.whn-svg-hl:hover,
+rect.whn-svg-hl.whn-flash {
+  fill: rgba(250, 204, 21, 0.6) !important;
+}
+
+circle.whn-svg-dot {
+  fill: #ca8a04 !important;
+  stroke: none !important;
+  pointer-events: none !important;
+}
