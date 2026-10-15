@@ -1,3 +1,5 @@
+import { t } from '../lib/i18n.js';
+
 const FONT = 'system-ui, -apple-system, "PingFang SC", sans-serif';
 
 const CSS = `
@@ -110,6 +112,22 @@ const CSS = `
     line-height: 1.4;
     padding: 4px 0;
   }
+  .prompt {
+    position: absolute;
+    display: none;
+    width: 240px;
+    height: 64px;
+    box-sizing: border-box;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    pointer-events: auto;
+    overflow: hidden;
+  }
+  .prompt.open {
+    display: block;
+  }
   .primary {
     height: 32px;
     border: 0;
@@ -140,24 +158,36 @@ export function mountOverlay() {
   const shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `
     <style>${CSS}</style>
-    <div class="toolbar" role="toolbar" aria-label="划线">
-      <button type="button" data-action="highlight">划线</button>
-      <button type="button" data-action="highlight-comment">划线+评论</button>
+    <div class="toolbar" role="toolbar">
+      <button type="button" data-action="highlight"></button>
+      <button type="button" data-action="highlight-comment"></button>
     </div>
-    <div class="bubble" role="dialog" aria-label="划线评论">
+    <div class="bubble" role="dialog">
       <div class="quote"></div>
-      <textarea aria-label="评论" placeholder="写下评论"></textarea>
+      <textarea></textarea>
       <div class="actions">
-        <button type="button" class="danger" data-action="delete">删除划线</button>
-        <button type="button" class="primary" data-action="save">保存</button>
+        <button type="button" class="danger" data-action="delete"></button>
+        <button type="button" class="primary" data-action="save"></button>
       </div>
     </div>
+    <iframe class="prompt" title=""></iframe>
   `;
+  // Strings are set as text/attributes, never parsed as HTML.
+  shadow.querySelector('.toolbar').setAttribute('aria-label', t('toolbarLabel'));
+  shadow.querySelector('[data-action="highlight"]').textContent = t('toolbarHighlight');
+  shadow.querySelector('[data-action="highlight-comment"]').textContent = t('toolbarHighlightComment');
+  shadow.querySelector('.bubble').setAttribute('aria-label', t('bubbleLabel'));
+  shadow.querySelector('textarea').setAttribute('aria-label', t('bubbleCommentLabel'));
+  shadow.querySelector('textarea').setAttribute('placeholder', t('bubbleCommentPlaceholder'));
+  shadow.querySelector('[data-action="delete"]').textContent = t('bubbleDelete');
+  shadow.querySelector('[data-action="save"]').textContent = t('bubbleSave');
+  shadow.querySelector('.prompt').title = t('promptLabel');
 
   const toolbar = shadow.querySelector('.toolbar');
   const bubble = shadow.querySelector('.bubble');
   const quoteEl = shadow.querySelector('.quote');
   const textarea = shadow.querySelector('textarea');
+  const prompt = shadow.querySelector('.prompt');
 
   function place(element, top, left) {
     element.style.top = `${Math.round(top)}px`;
@@ -218,6 +248,44 @@ export function mountOverlay() {
       let left = rect.left;
       left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
       place(bubble, top, left);
+    },
+    prompt,
+    promptOpen() {
+      return prompt.classList.contains('open');
+    },
+    /**
+     * Card 8px below the selection (and below the toolbar or bubble if they sit
+     * under it), flipped above everything when the viewport has no room below.
+     * `anchor` is the highlight's rect; `obstacles` are other rects to keep clear of.
+     */
+    placePrompt(anchor, obstacles = []) {
+      if (!anchor) return;
+      const width = 240;
+      const height = prompt.offsetHeight || parseFloat(prompt.style.height) || 64;
+      const near = obstacles.filter((rect) => rect && rect.width && rect.height
+        && rect.left < anchor.right + width && rect.right > anchor.left - width);
+      const below = near.filter((rect) => rect.top >= anchor.top);
+      const above = near.filter((rect) => rect.top < anchor.top);
+      let top = Math.max(anchor.bottom, ...below.map((rect) => rect.bottom)) + 8;
+      if (top + height > window.innerHeight - 4) {
+        const ceiling = Math.min(anchor.top, ...above.map((rect) => rect.top), ...below.map((rect) => rect.top));
+        top = Math.max(4, ceiling - 8 - height);
+      }
+      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+      prompt.style.top = `${Math.round(top)}px`;
+      prompt.style.left = `${Math.round(left)}px`;
+    },
+    showPrompt(src, anchor, obstacles) {
+      if (prompt.getAttribute('src') !== src) prompt.setAttribute('src', src);
+      prompt.classList.add('open');
+      this.placePrompt(anchor, obstacles);
+    },
+    setPromptHeight(height) {
+      if (height > 0 && height < 400) prompt.style.height = `${height + 2}px`;
+    },
+    hidePrompt() {
+      prompt.classList.remove('open');
+      prompt.removeAttribute('src');
     },
     eventFromHost(event) {
       return event.target === host || host.contains(event.target);

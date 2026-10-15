@@ -1,6 +1,6 @@
 # web-highlight-notes
 
-在网页上划线、写评论，并用 Chrome 侧边栏汇总、导出 Markdown 的扩展（Manifest V3，版本 0.1.2）。
+在网页上划线、写评论，并用 Chrome 侧边栏汇总、导出 Markdown 的扩展（Manifest V3，版本 0.1.4）。
 
 ![演示](docs/assets/demo.gif)
 
@@ -15,15 +15,26 @@
 - 正文改了、找不到原句时，这条划线仍会保留，并标成「⚠ 未定位」，导出时也会带上。
 - 「导出 MD」把笔记复制到剪贴板，同时下载 `.md` 文件。按钮会显示「已复制 ✓」约 1.5 秒。
 
+- 界面跟随 Chrome 语言：中文（zh_CN）或英文（en），包括导出的 Markdown 标签。
+
+## 权限（0.1.4 起）
+
+安装时不申请任何网站权限，也不申请 `tabs`。
+
+- 点击工具栏图标（或快捷键 Alt+Shift+H）：打开侧边栏，并通过 `activeTab` 在当前页启用划线、显示这一页已有的划线。
+- 在某个网站第一次划线后，选中文字下方 8px 出现一张小卡片（下方放不下时移到上方，不遮挡选区和工具条）「允许在此网站自动显示划线，刷新后仍在」。点「允许」会弹出 Chrome 的授权框，只申请这个网站（例如 `https://example.com/*`）。允许后扩展为这个网站注册内容脚本，以后打开或刷新页面会自动显示划线。
+- 点「暂不」或在授权框里拒绝：划线照样保存在本地，侧边栏照样列出、可以导出，只是刷新后不会自动显示，需要再点一次插件图标。侧边栏计数下方会提示「此网站需点击插件图标显示划线」，旁边的「去授权」可以随时补授权。拒绝后这个网站不会再弹卡片。
+- 从 0.1.3 升级：Chrome 会保留 0.1.3 安装时给的全部网站权限，已有划线的网站继续自动显示，不需要重新授权。
+
 笔记存在 `chrome.storage.local`，键是去掉 hash 的页面 URL。再次打开页面时，用原文加上前后约 30 个字重新定位，匹配可以跨过多个文本节点。
 
 ## 安装
 
-先运行 `npm run build`，得到 `dist/web-highlight-notes-v0.1.2.zip`。
+先运行 `npm run build`，得到 `dist/web-highlight-notes-v0.1.4.zip`。
 
 先解压 zip → 打开 chrome://extensions → 开启「开发者模式」 → 点击「加载已解压的扩展程序」选择解压后的目录。
 
-然后点击工具栏图标，侧边栏会打开。
+然后点击工具栏图标，侧边栏会打开，当前页就可以划线。
 
 ## 使用
 
@@ -42,6 +53,6 @@ xvfb-run npm run e2e
 npm run build
 ```
 
-- `npm test`：锚定（含重复文本消歧、原文改变后失败）和 Markdown 导出的单元测试。
-- `npm run e2e`：Playwright 加载未打包扩展，对本地文章页跑端到端场景。需要图形界面；没有显示器时用 `xvfb-run`。
-- `npm run build`：生成 `dist/web-highlight-notes-v0.1.2.zip`，压缩包根目录就是 `manifest.json`。
+- `npm test`：锚定（含重复文本消歧、原文改变后失败）、Markdown 导出、网站权限模式、中英文案键一致的单元测试。
+- `npm run e2e`：Playwright 加载未打包扩展，对本地文章页跑端到端场景。需要图形界面；没有显示器时用 `xvfb-run`。工具栏图标和 Chrome 原生授权框 Playwright 点不到，测试用 `xdotool` 发真实按键：快捷键 Alt+Shift+H 等同点击图标（同样授予 activeTab），授权框里 Return 是「拒绝」、Tab Return 是「允许」。需要 `xdotool`（`sudo apt-get install -y xdotool`）。
+- `npm run build`：生成 `dist/web-highlight-notes-v0.1.4.zip`，压缩包根目录就是 `manifest.json`。

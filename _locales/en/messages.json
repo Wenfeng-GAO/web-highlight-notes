@@ -1,0 +1,137 @@
+{
+  "extName": {
+    "message": "web-highlight-notes"
+  },
+  "extDescription": {
+    "message": "Highlight and comment on web pages, then review and export them as Markdown in the side panel."
+  },
+  "actionTitle": {
+    "message": "Highlight notes"
+  },
+  "commandOpen": {
+    "message": "Use highlight notes on this page"
+  },
+  "toolbarLabel": {
+    "message": "Highlight"
+  },
+  "toolbarHighlight": {
+    "message": "Highlight"
+  },
+  "toolbarHighlightComment": {
+    "message": "Highlight + note"
+  },
+  "bubbleLabel": {
+    "message": "Highlight note"
+  },
+  "bubbleCommentLabel": {
+    "message": "Note"
+  },
+  "bubbleCommentPlaceholder": {
+    "message": "Write a note"
+  },
+  "bubbleDelete": {
+    "message": "Delete highlight"
+  },
+  "bubbleSave": {
+    "message": "Save"
+  },
+  "promptLabel": {
+    "message": "Site access"
+  },
+  "promptText": {
+    "message": "Allow on this site to show highlights automatically after reload"
+  },
+  "promptAllow": {
+    "message": "Allow"
+  },
+  "promptLater": {
+    "message": "Not now"
+  },
+  "panelLoading": {
+    "message": "Loading…"
+  },
+  "panelExport": {
+    "message": "Export MD"
+  },
+  "panelCopied": {
+    "message": "Copied ✓"
+  },
+  "panelSummaryPlaceholder": {
+    "message": "Page summary"
+  },
+  "panelEmpty": {
+    "message": "Select text to highlight"
+  },
+  "panelUnanchored": {
+    "message": "⚠ Not found on page"
+  },
+  "panelUntitled": {
+    "message": "Untitled page"
+  },
+  "panelNoPage": {
+    "message": "No page open"
+  },
+  "panelLoadFailed": {
+    "message": "Failed to load"
+  },
+  "panelNeedClick": {
+    "message": "On this site, click the extension icon to show highlights"
+  },
+  "panelGrant": {
+    "message": "Allow"
+  },
+  "panelClickToUse": {
+    "message": "Click the extension icon to use highlight notes on this page"
+  },
+  "exportSource": {
+    "message": "Source: "
+  },
+  "exportSummary": {
+    "message": "Summary"
+  },
+  "exportHighlights": {
+    "message": "Highlights"
+  },
+  "exportComment": {
+    "message": "Note: "
+  },
+  "exportDefaultName": {
+    "message": "highlight-notes"
+  },
+  "countHighlightsOne": {
+    "message": "$COUNT$ highlight",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countHighlightsOther": {
+    "message": "$COUNT$ highlights",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countNotesOne": {
+    "message": "$COUNT$ note",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countNotesOther": {
+    "message": "$COUNT$ notes",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  }
+}

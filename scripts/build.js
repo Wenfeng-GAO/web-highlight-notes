@@ -96,7 +96,7 @@ function walk(directory) {
 
 const files = [];
 files.push({ name: 'manifest.json', data: fs.readFileSync(path.join(root, 'manifest.json')) });
-for (const full of [...walk(path.join(root, 'icons')), ...walk(path.join(root, 'src'))]) {
+for (const full of [...walk(path.join(root, '_locales')), ...walk(path.join(root, 'icons')), ...walk(path.join(root, 'src'))]) {
   const name = path.relative(root, full).split(path.sep).join('/');
   files.push({ name, data: fs.readFileSync(full) });
 }
@@ -106,6 +106,9 @@ fs.writeFileSync(zipPath, createZip(files));
 
 const names = new Set(files.map((file) => file.name));
 if (!names.has('manifest.json')) throw new Error('manifest.json missing from zip');
+for (const locale of ['zh_CN', 'en']) {
+  if (!names.has(`_locales/${locale}/messages.json`)) throw new Error(`${locale} messages missing from zip`);
+}
 if ([...names].some((name) => name.startsWith('/') || name.includes('..'))) {
   throw new Error('unexpected zip path');
 }

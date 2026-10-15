@@ -1,17 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "web-highlight-notes",
-  "version": "0.1.3",
-  "description": "在网页上划线、写评论，并在侧边栏汇总导出 Markdown。",
+  "name": "__MSG_extName__",
+  "version": "0.1.4",
+  "description": "__MSG_extDescription__",
+  "default_locale": "zh_CN",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "sidePanel", "tabs"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "action": {
-    "default_title": "划线笔记",
+    "default_title": "__MSG_actionTitle__",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+H" },
+      "description": "__MSG_commandOpen__"
     }
   },
   "icons": {
@@ -26,22 +33,15 @@
   "side_panel": {
     "default_path": "src/sidepanel/sidepanel.html"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/boot.js"],
-      "css": ["src/content/highlight.css"],
-      "run_at": "document_idle"
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": [
         "src/content/content.js",
         "src/content/overlay.js",
-        "src/lib/*"
+        "src/lib/*",
+        "src/prompt/*"
       ],
-      "matches": ["<all_urls>"]
+      "matches": ["http://*/*", "https://*/*"]
     }
   ]
 }

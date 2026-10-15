@@ -169,3 +169,19 @@ body {
   color: var(--warn);
   font-size: 12px;
 }
+
+.status {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #B45309;
+}
+.status[hidden] {
+  display: none;
+}
+.status a {
+  color: #B45309;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

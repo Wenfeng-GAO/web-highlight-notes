@@ -15,6 +15,9 @@ let baseTop = null;
 let suppressToolbar = false;
 let pointerInUi = false;
 let bubbleId = null;
+let lastToolbarRect = null;
+let promptShown = false;
+let promptAnchorId = null;
 
 function elementFromNode(node) {
   if (!node) return null;
@@ -64,6 +67,7 @@ async function reconcile() {
 }
 
 function hideToolbar() {
+  if (ui.toolbarOpen()) lastToolbarRect = ui.toolbar.getBoundingClientRect();
   ui.hideToolbar();
   toolbarRange = null;
   baseTop = null;
@@ -132,12 +136,22 @@ function closeBubble() {
   ui.hideBubble();
 }
 
+// crypto.randomUUID only exists in secure contexts; plain http:// pages lack it.
+function newId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 async function createHighlight(withComment) {
   const quote = pendingQuote;
   if (!quote?.text?.trim() || !record) return;
   pendingQuote = null;
   const highlight = {
-    id: crypto.randomUUID(),
+    id: newId(),
     text: quote.text,
     prefix: quote.prefix,
     suffix: quote.suffix,
@@ -155,7 +169,57 @@ async function createHighlight(withComment) {
   renderFromRecord();
   await persist();
   if (withComment) openBubble(highlight.id);
+  checkSite(highlight.id);
 }
+
+/**
+ * After a highlight is saved, ask the worker whether this site may auto-restore.
+ * Unpermitted sites keep their notes in storage; they only need a click to show.
+ * Offer the grant once per page load, and never again after the user declines.
+ */
+async function checkSite(highlightId) {
+  let status = null;
+  try {
+    status = await chrome.runtime.sendMessage({ type: 'whn:site' });
+  } catch {
+    return;
+  }
+  document.documentElement.dataset.whnSite = status?.granted ? 'granted' : (status?.declined ? 'declined' : 'ask');
+  if (!status?.pattern || status.granted || status.declined || promptShown) return;
+  promptShown = true;
+  const src = `${chrome.runtime.getURL('src/prompt/prompt.html')}?origin=${encodeURIComponent(status.pattern)}`;
+  promptAnchorId = highlightId;
+  const placement = promptPlacement();
+  ui.showPrompt(src, placement.anchor, placement.obstacles);
+}
+
+/** Where the card goes: under the new highlight, clear of the last toolbar spot and an open bubble. */
+function promptPlacement() {
+  const anchor = promptAnchorId ? unionRect(highlightNodes(document.body, promptAnchorId)) : null;
+  const obstacles = [];
+  if (lastToolbarRect) obstacles.push(lastToolbarRect);
+  if (ui.bubbleOpen()) obstacles.push(ui.bubble.getBoundingClientRect());
+  return { anchor: anchor || lastToolbarRect, obstacles };
+}
+
+function placePromptAgain() {
+  if (!ui.promptOpen()) return;
+  const placement = promptPlacement();
+  ui.placePrompt(placement.anchor, placement.obstacles);
+}
+
+window.addEventListener('message', (event) => {
+  if (!ui.promptOpen() || event.source !== ui.prompt.contentWindow || !event.data?.whnPrompt) return;
+  if (event.data.type === 'size') {
+    ui.setPromptHeight(Number(event.data.height));
+    placePromptAgain();
+  }
+  if (event.data.type === 'done') {
+    promptAnchorId = null;
+    ui.hidePrompt();
+    document.documentElement.dataset.whnSite = event.data.granted ? 'granted' : 'declined';
+  }
+});
 
 async function saveBubble() {
   const highlight = record.highlights.find((item) => item.id === bubbleId);
@@ -233,6 +297,11 @@ function onKeyDown(event) {
 }
 
 function onScroll() {
+  if (ui.promptOpen()) {
+    // The toolbar spot is in viewport coordinates and no longer lines up after a scroll.
+    lastToolbarRect = null;
+    placePromptAgain();
+  }
   if (ui.toolbarOpen() && toolbarRange && baseTop != null) {
     const top = toolbarRange.getBoundingClientRect().top;
     if (Math.abs(top - baseTop) > 40) {
@@ -340,6 +409,11 @@ function bindUi() {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'whn:info') {
+    // Lets the side panel identify this page without the tabs permission.
+    sendResponse({ url: pageUrl, title: document.title || '' });
+    return false;
+  }
   if (message?.type === 'whn:scroll') {
     sendResponse({ ok: scrollToHighlight(message.id) });
     return false;
