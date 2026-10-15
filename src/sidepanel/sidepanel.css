@@ -185,3 +185,48 @@ body {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Non-page states: no counts, summary or export for a page we cannot show. */
+.app[data-mode="unsupported"] #export,
+.app[data-mode="unsupported"] #counts,
+.app[data-mode="unsupported"] #summary {
+  display: none;
+}
+.app[data-mode="unsupported"] .empty {
+  padding: 4px 0;
+  text-align: left;
+  font-size: 12px;
+  color: #6B7280;
+}
+.notice {
+  padding: 12px;
+  border-radius: 8px;
+  background: #F9FAFB;
+}
+.notice[hidden] {
+  display: none;
+}
+.notice-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text);
+}
+.notice-body {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6B7280;
+}
+.notice-button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #1F2328;
+  color: #ffffff;
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+}

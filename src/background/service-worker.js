@@ -1,4 +1,4 @@
-import { isSitePattern, isWebUrl, originPattern } from '../lib/url.js';
+import { isFileUrl, isSitePattern, isSupportedUrl, originPattern } from '../lib/url.js';
 
 // Sites the user granted (or that kept a grant from 0.1.3) get a persistent
 // content script, so highlights restore on load with no click. Other sites run
@@ -93,6 +93,8 @@ async function clearDeclined(origins) {
 
 async function siteStatus(url) {
   const pattern = originPattern(url);
+  // Local files come with the install (file:///*, gated by "Allow access to file URLs"): never ask.
+  if (isFileUrl(url)) return { pattern, granted: true, declined: false };
   const stored = await chrome.storage.local.get(DECLINED_KEY);
   return {
     pattern,
@@ -114,10 +116,47 @@ chrome.runtime.onStartup.addListener(() => {
   syncAutoScripts();
 });
 
+// Per-tab note for the side panel: the click landed on a page we could not read.
+const TAB_STATE_PREFIX = 'whn:tab:';
+
+/**
+ * Without the tabs permission an unreadable tab has no url. A click grants activeTab
+ * on web pages, and file:///* lets us read local files, so a tab that still cannot be
+ * read after a click is about:blank, data:, blob: or another page extensions may not touch.
+ */
+async function noteUnreadableTab(tabId) {
+  let href = '';
+  try {
+    const [result] = await chrome.scripting.executeScript({ target: { tabId }, func: () => location.href });
+    href = result?.result || '';
+  } catch {
+    // Still no access.
+  }
+  // A blob: page made by a local file can be scripted, but its URL dies with the page.
+  if (isSupportedUrl(href)) {
+    injectTab(tabId);
+    return;
+  }
+  await chrome.storage.session.set({ [`${TAB_STATE_PREFIX}${tabId}`]: 'unsupported' });
+}
+
 chrome.action.onClicked.addListener((tab) => {
   // sidePanel.open must run inside the click gesture, before any await.
-  if (tab?.id != null) chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
-  if (tab?.id != null && isWebUrl(tab.url)) injectTab(tab.id);
+  if (tab?.id == null) return;
+  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  if (isSupportedUrl(tab.url)) injectTab(tab.id);
+  else if (tab.url) {
+    // about:blank, data:, blob: and the like: tell the panel a click will not help.
+    chrome.storage.session.set({ [`${TAB_STATE_PREFIX}${tab.id}`]: 'unsupported' }).catch(() => {});
+  } else noteUnreadableTab(tab.id);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  // A new document may be a different page; forget what the last click learned.
+  if (changeInfo.status === 'loading') chrome.storage.session.remove(`${TAB_STATE_PREFIX}${tabId}`).catch(() => {});
+});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove(`${TAB_STATE_PREFIX}${tabId}`).catch(() => {});
 });
 
 chrome.permissions.onAdded.addListener(async ({ origins = [] }) => {

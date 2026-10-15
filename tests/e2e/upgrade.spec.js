@@ -107,7 +107,7 @@ test('upgrade from 0.1.3 keeps notes, the site grant, auto-restore, side panel a
   expect(before.highlights).toHaveLength(2);
   await context.close();
 
-  // 2. Update in place to 0.1.4.
+  // 2. Update in place to the current version (0.1.4+).
   installCurrent(extDir);
   // A store update re-registers the extension service worker. Relaunching with a
   // changed unpacked folder does not (Chrome kept running the cached 0.1.3
@@ -116,19 +116,20 @@ test('upgrade from 0.1.3 keeps notes, the site grant, auto-restore, side panel a
   fs.rmSync(path.join(userDataDir, 'Default', 'Service Worker'), { recursive: true, force: true });
   ({ context, worker } = await launch(extDir, userDataDir));
   const extensionId = new URL(worker.url()).host;
-  expect(await worker.evaluate(() => chrome.runtime.getManifest().version)).toBe('0.1.4');
+  expect(await worker.evaluate(() => chrome.runtime.getManifest().version)).toBe(JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')).version);
 
   // Observed: Chrome keeps the old <all_urls> grant, narrowed to the new optional set.
   const granted = await worker.evaluate(() => chrome.permissions.getAll());
   console.log('UPGRADE granted after update:', JSON.stringify(granted));
-  expect(granted.origins.sort()).toEqual(['http://*/*', 'https://*/*']);
+  // 0.1.5 adds the install-time file:///* (no warning).
+  expect(granted.origins.sort()).toEqual(['file:///*', 'http://*/*', 'https://*/*']);
   expect(await worker.evaluate(() => chrome.permissions.contains({ origins: ['http://127.0.0.1/*'] }))).toBe(true);
 
   // Sites that already had notes get the persistent script; other sites do not.
   await expect.poll(() => worker.evaluate(async () => {
     const [script] = await chrome.scripting.getRegisteredContentScripts({ ids: ['whn-auto'] });
     return script ? { matches: script.matches, persist: script.persistAcrossSessions } : null;
-  })).toEqual({ matches: ['http://127.0.0.1/*'], persist: true });
+  })).toEqual({ matches: ['file:///*', 'http://127.0.0.1/*'], persist: true });
   expect(await worker.evaluate(async () => (await chrome.sidePanel.getPanelBehavior()).openPanelOnActionClick)).toBe(false);
 
   // Storage is untouched.

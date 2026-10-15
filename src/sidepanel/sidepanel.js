@@ -1,7 +1,7 @@
 import { downloadFilename, formatDate, toMarkdown } from '../lib/export.js';
 import { commentCount, emptyRecord, sortHighlights, toStoredRecord } from '../lib/model.js';
 import { t, localize } from '../lib/i18n.js';
-import { isWebUrl, originPattern, pageKey } from '../lib/url.js';
+import { isFileUrl, isSupportedUrl, isUnsupportedPageError, originPattern, pageKey } from '../lib/url.js';
 
 localize(document);
 const DECLINED_KEY = '__whn:declined';
@@ -12,6 +12,11 @@ const countsEl = document.querySelector('#counts');
 const exportBtn = document.querySelector('#export');
 const listEl = document.querySelector('#list');
 const statusEl = document.querySelector('#status');
+const appEl = document.querySelector('.app');
+const noticeEl = document.querySelector('#notice');
+const openSettingsEl = document.querySelector('#open-settings');
+const TAB_STATE_PREFIX = 'whn:tab:';
+let unreadableTabId = null;
 const grantEl = document.querySelector('#grant');
 
 const SAVE_DEBOUNCE_MS = 300;
@@ -137,7 +142,8 @@ async function updateStatus() {
   const generation = ++statusGeneration;
   const pattern = storageKey ? originPattern(storageKey) : null;
   let show = false;
-  if (pattern) {
+  // Local files never use the per-site grant; the file-access card covers them.
+  if (pattern && !isFileUrl(storageKey)) {
     const [granted, stored] = await Promise.all([
       chrome.permissions.contains({ origins: [pattern] }).catch(() => false),
       chrome.storage.local.get(DECLINED_KEY),
@@ -341,17 +347,35 @@ async function currentWindowId() {
 
 async function showTab(tab) {
   let url = tab?.url || '';
-  if (!url && Number.isFinite(tab?.id)) {
-    // No access to tab.url here (no grant, activeTab gone). Ask the page.
+  if (Number.isFinite(tab?.id)) {
+    // Ask the page first: it knows its URL even when tab.url is hidden, and its key
+    // is the one it saves under (tab.url moves on with history.pushState, the page does not).
     const info = await pageInfo(tab.id);
-    if (info?.url) tab = { ...tab, url: info.url, title: tab.title || info.title };
-    url = info?.url || '';
+    if (info?.unsupported) {
+      showUnsupported(tab.id);
+      return;
+    }
+    if (info?.url) {
+      tab = { ...tab, url: info.url, title: tab.title || info.title };
+      url = info.url;
+    }
     if (!url) {
-      showUnavailable(tab.id);
+      await showUnreadable(tab.id);
       return;
     }
   }
-  if (!isWebUrl(url)) return;
+  // Our own pages (only seen when the panel is opened as a tab) keep the current view.
+  if (url.startsWith(chrome.runtime.getURL(''))) return;
+  if (!isSupportedUrl(url)) {
+    showUnsupported(tab?.id);
+    return;
+  }
+  unreadableTabId = null;
+  setMode('page');
+  if (isFileUrl(url)) {
+    // A click still works on a local file, but nothing restores on reload until file access is on.
+    noticeEl.hidden = await chrome.extension.isAllowedFileSchemeAccess();
+  }
   const nextKey = pageKey(url);
   const nextId = Number.isFinite(tab.id) ? tab.id : null;
   const nextTitle = tab.title || '';
@@ -407,7 +431,8 @@ function bindTabEvents() {
   });
 }
 
-function showEmpty(message = t('panelEmpty'), title = t('panelNoPage')) {
+function showEmpty(message = t('panelEmpty'), title = t('panelNoPage'), mode = 'page') {
+  setMode(mode);
   record = null;
   storageKey = '';
   tabId = null;
@@ -422,14 +447,55 @@ function showEmpty(message = t('panelEmpty'), title = t('panelNoPage')) {
   updateStatus();
 }
 
-/** A web tab we cannot read yet: no grant for its site and no click on this page. */
-function showUnavailable(id) {
+function setMode(mode) {
+  appEl.dataset.mode = mode;
+  noticeEl.hidden = true;
+}
+
+function leavePage(id) {
   clearTimeout(saveTimer);
   saveTimer = 0;
   flushSummarySave();
   showGeneration += 1;
+  unreadableTabId = Number.isFinite(id) ? id : null;
+}
+
+/** chrome://, the new tab page, the Web Store and other pages extensions may not touch. */
+function showUnsupported(id) {
+  leavePage(id);
+  showEmpty(t('panelUnsupported'), '', 'unsupported');
+  tabId = unreadableTabId;
+}
+
+/**
+ * A tab whose URL we may not read. Chrome's error names chrome:// pages and the Web
+ * Store; the worker notes tabs a click could not open (about:blank, data:, blob:);
+ * anything else is a web page that just needs a toolbar click.
+ */
+async function classifyUnreadable(id) {
+  try {
+    const [result] = await chrome.scripting.executeScript({ target: { tabId: id }, func: () => location.href });
+    return isSupportedUrl(result?.result) ? 'click' : 'unsupported';
+  } catch (error) {
+    if (isUnsupportedPageError(error?.message || error)) return 'unsupported';
+  }
+  const key = `${TAB_STATE_PREFIX}${id}`;
+  const stored = await chrome.storage.session.get(key).catch(() => ({}));
+  return stored[key] === 'unsupported' ? 'unsupported' : 'click';
+}
+
+async function showUnreadable(id) {
+  if (await classifyUnreadable(id) === 'unsupported') {
+    showUnsupported(id);
+    return;
+  }
+  leavePage(id);
   showEmpty(t('panelClickToUse'), t('panelUntitled'));
-  tabId = Number.isFinite(id) ? id : null;
+  tabId = unreadableTabId;
+}
+
+function openExtensionSettings() {
+  chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
 }
 
 function bindPanelEvents() {
@@ -437,7 +503,14 @@ function bindPanelEvents() {
   chrome.permissions?.onAdded?.addListener(() => updateStatus());
   chrome.permissions?.onRemoved?.addListener(() => updateStatus());
   grantEl.addEventListener('click', onGrant);
+  openSettingsEl.addEventListener('click', openExtensionSettings);
   chrome.storage.onChanged.addListener((changes, area) => {
+    // The worker learned why the current unreadable tab is unreadable (after a click).
+    if (area === 'session' && unreadableTabId != null && changes[`${TAB_STATE_PREFIX}${unreadableTabId}`]) {
+      const id = unreadableTabId;
+      enqueueShow(() => showTab({ id }));
+      return;
+    }
     if (area === 'local' && changes[DECLINED_KEY]) updateStatus();
     if (area !== 'local' || !storageKey || !changes[storageKey]) return;
     // Drop an in-flight tab read so it cannot paint a record older than this write.
@@ -462,12 +535,16 @@ function bindPanelEvents() {
 async function main() {
   bindPanelEvents();
   const context = await resolveContext();
-  if (context.url && isWebUrl(context.url)) {
+  if (context.url && isSupportedUrl(context.url)) {
     await enqueueShow(() => showTab({
       id: context.tabId,
       url: context.url,
       title: context.tabTitle,
     }));
+    return;
+  }
+  if (Number.isFinite(context.tabId)) {
+    await enqueueShow(() => showTab({ id: context.tabId, url: context.url, title: context.tabTitle }));
     return;
   }
   showEmpty();

@@ -133,5 +133,17 @@
         "example": "3"
       }
     }
+  },
+  "panelFileAccessTitle": {
+    "message": "Allow access to local files"
+  },
+  "panelFileAccessBody": {
+    "message": "Turn on “Allow access to file URLs” in the extension details to highlight local HTML files"
+  },
+  "panelFileAccessButton": {
+    "message": "Open extension settings"
+  },
+  "panelUnsupported": {
+    "message": "Highlighting isn't available on this page"
   }
 }
