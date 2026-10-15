@@ -119,8 +119,13 @@ function renderList() {
   }
 }
 
+// chrome.i18n has no plural rules; pick the form here (zh uses one form for both).
 function countsText(highlights) {
-  return t('panelCounts', [String(highlights.length), String(commentCount(highlights))]);
+  const h = highlights.length;
+  const c = commentCount(highlights);
+  const highlightsText = h === 1 ? t('countHighlightsOne', [String(h)]) : t('countHighlightsOther', [String(h)]);
+  const notesText = c === 1 ? t('countNotesOne', [String(c)]) : t('countNotesOther', [String(c)]);
+  return `${highlightsText} · ${notesText}`;
 }
 
 let statusGeneration = 0;

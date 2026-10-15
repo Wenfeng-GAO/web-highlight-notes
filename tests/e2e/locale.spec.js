@@ -46,13 +46,24 @@ test('English Chrome shows English toolbar, bubble, prompt card, side panel and 
     await bubble.getByRole('textbox', { name: 'Note' }).fill('english note');
     await bubble.getByRole('button', { name: 'Save', exact: true }).click();
     const card = page.frameLocator('#whn-root >> iframe.prompt');
+    await expect(page.locator('#whn-root >> iframe.prompt')).toBeVisible();
+    await page.waitForTimeout(300);
+    // With the note bubble open, the card goes below the bubble, covering neither it nor the text.
+    const rects = await page.evaluate(() => {
+      const root = document.querySelector('#whn-root').shadowRoot;
+      const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; };
+      return { card: box(root.querySelector('iframe.prompt')), bubble: box(root.querySelector('.bubble')), text: box(document.querySelector('.whn-hl')) };
+    });
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    expect(overlaps(rects.card, rects.bubble)).toBe(false);
+    expect(overlaps(rects.card, rects.text)).toBe(false);
     await expect(card.getByText('Allow on this site so highlights come back after reload')).toBeVisible();
     await card.getByRole('button', { name: 'Not now' }).click();
 
     const tabId = await page.evaluate(() => document.documentElement.dataset.whnTab);
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/sidepanel.html?${new URLSearchParams({ tabId, url, title: 'Article' })}`);
-    await expect(panel.locator('#counts')).toHaveText('1 highlights · 1 notes');
+    await expect(panel.locator('#counts')).toHaveText('1 highlight · 1 note');
     await expect(panel.locator('#status')).toHaveText('On this site, click the extension icon to show highlights Allow');
     await expect(panel.locator('#summary')).toHaveAttribute('placeholder', 'Page summary');
     const downloadPromise = panel.waitForEvent('download');

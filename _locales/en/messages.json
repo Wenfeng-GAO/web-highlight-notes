@@ -56,19 +56,6 @@
   "panelCopied": {
     "message": "Copied ✓"
   },
-  "panelCounts": {
-    "message": "$H$ highlights · $C$ notes",
-    "placeholders": {
-      "h": {
-        "content": "$1",
-        "example": "3"
-      },
-      "c": {
-        "content": "$2",
-        "example": "2"
-      }
-    }
-  },
   "panelSummaryPlaceholder": {
     "message": "Page summary"
   },
@@ -110,5 +97,41 @@
   },
   "exportDefaultName": {
     "message": "highlight-notes"
+  },
+  "countHighlightsOne": {
+    "message": "$COUNT$ highlight",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countHighlightsOther": {
+    "message": "$COUNT$ highlights",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countNotesOne": {
+    "message": "$COUNT$ note",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countNotesOther": {
+    "message": "$COUNT$ notes",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
   }
 }

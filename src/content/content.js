@@ -17,6 +17,7 @@ let pointerInUi = false;
 let bubbleId = null;
 let lastToolbarRect = null;
 let promptShown = false;
+let promptAnchorId = null;
 
 function elementFromNode(node) {
   if (!node) return null;
@@ -168,7 +169,7 @@ async function createHighlight(withComment) {
   renderFromRecord();
   await persist();
   if (withComment) openBubble(highlight.id);
-  checkSite();
+  checkSite(highlight.id);
 }
 
 /**
@@ -176,7 +177,7 @@ async function createHighlight(withComment) {
  * Unpermitted sites keep their notes in storage; they only need a click to show.
  * Offer the grant once per page load, and never again after the user declines.
  */
-async function checkSite() {
+async function checkSite(highlightId) {
   let status = null;
   try {
     status = await chrome.runtime.sendMessage({ type: 'whn:site' });
@@ -187,13 +188,34 @@ async function checkSite() {
   if (!status?.pattern || status.granted || status.declined || promptShown) return;
   promptShown = true;
   const src = `${chrome.runtime.getURL('src/prompt/prompt.html')}?origin=${encodeURIComponent(status.pattern)}`;
-  ui.showPrompt(src, lastToolbarRect);
+  promptAnchorId = highlightId;
+  const placement = promptPlacement();
+  ui.showPrompt(src, placement.anchor, placement.obstacles);
+}
+
+/** Where the card goes: under the new highlight, clear of the last toolbar spot and an open bubble. */
+function promptPlacement() {
+  const anchor = promptAnchorId ? unionRect(highlightNodes(document.body, promptAnchorId)) : null;
+  const obstacles = [];
+  if (lastToolbarRect) obstacles.push(lastToolbarRect);
+  if (ui.bubbleOpen()) obstacles.push(ui.bubble.getBoundingClientRect());
+  return { anchor: anchor || lastToolbarRect, obstacles };
+}
+
+function placePromptAgain() {
+  if (!ui.promptOpen()) return;
+  const placement = promptPlacement();
+  ui.placePrompt(placement.anchor, placement.obstacles);
 }
 
 window.addEventListener('message', (event) => {
   if (!ui.promptOpen() || event.source !== ui.prompt.contentWindow || !event.data?.whnPrompt) return;
-  if (event.data.type === 'size') ui.setPromptHeight(Number(event.data.height));
+  if (event.data.type === 'size') {
+    ui.setPromptHeight(Number(event.data.height));
+    placePromptAgain();
+  }
   if (event.data.type === 'done') {
+    promptAnchorId = null;
     ui.hidePrompt();
     document.documentElement.dataset.whnSite = event.data.granted ? 'granted' : 'declined';
   }
@@ -275,6 +297,11 @@ function onKeyDown(event) {
 }
 
 function onScroll() {
+  if (ui.promptOpen()) {
+    // The toolbar spot is in viewport coordinates and no longer lines up after a scroll.
+    lastToolbarRect = null;
+    placePromptAgain();
+  }
   if (ui.toolbarOpen() && toolbarRange && baseTop != null) {
     const top = toolbarRange.getBoundingClientRect().top;
     if (Math.abs(top - baseTop) > 40) {

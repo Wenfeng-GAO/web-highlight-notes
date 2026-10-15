@@ -61,3 +61,14 @@ describe('locales', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('count plurals', () => {
+  it('en has distinct singular and plural forms, zh keeps one form', () => {
+    expect(en.countHighlightsOne.message).toBe('$COUNT$ highlight');
+    expect(en.countHighlightsOther.message).toBe('$COUNT$ highlights');
+    expect(en.countNotesOne.message).toBe('$COUNT$ note');
+    expect(en.countNotesOther.message).toBe('$COUNT$ notes');
+    expect(zh.countHighlightsOne.message).toBe(zh.countHighlightsOther.message);
+    expect(zh.countNotesOne.message).toBe('$COUNT$ 条评论');
+  });
+});

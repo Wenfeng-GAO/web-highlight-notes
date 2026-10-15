@@ -53,6 +53,27 @@ async function highlight(page, selector, text) {
 const ready = (page) => page.evaluate(() => document.documentElement.dataset.whnReady || '');
 const promptFrame = (page) => page.frameLocator('#whn-root >> iframe.prompt');
 
+/** Viewport rects of the card and of the given highlight (union of its spans). */
+async function cardAndHighlightRects(page, text) {
+  return page.evaluate((quote) => {
+    const card = document.querySelector('#whn-root').shadowRoot.querySelector('iframe.prompt').getBoundingClientRect();
+    const spans = [...document.querySelectorAll('.whn-hl')].filter((el) => {
+      const id = el.dataset.whnId;
+      return [...document.querySelectorAll(`.whn-hl[data-whn-id="${id}"]`)].map((n) => n.textContent).join('') === quote;
+    });
+    const rects = spans.map((el) => el.getBoundingClientRect());
+    const hl = {
+      top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)),
+      left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)),
+    };
+    return { card: { top: card.top, bottom: card.bottom, left: card.left, right: card.right, width: card.width }, hl, viewport: innerHeight };
+  }, text);
+}
+
+function overlaps(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
 async function stored(key) {
   return worker.evaluate(async (k) => (await chrome.storage.local.get(k))[k] || null, key);
 }
@@ -123,8 +144,12 @@ test('before any grant: nothing auto-injects; an icon click (activeTab) makes hi
   await expect(card.getByText('允许在此网站保存显示，刷新后划线仍在')).toBeVisible();
   await expect(card.getByRole('button', { name: '允许', exact: true })).toBeVisible();
   await expect(card.getByRole('button', { name: '暂不', exact: true })).toBeVisible();
-  const box = await page.locator('#whn-root >> iframe.prompt').boundingBox();
-  expect(Math.round(box.width)).toBe(240);
+  // The card sits 8px under the highlighted text and never covers it.
+  await page.waitForTimeout(300);
+  const placed = await cardAndHighlightRects(page, QUOTE_1);
+  expect(Math.round(placed.card.width)).toBe(240);
+  expect(overlaps(placed.card, placed.hl)).toBe(false);
+  expect(Math.round(placed.card.top - placed.hl.bottom)).toBe(8);
   if (shots) await page.screenshot({ path: path.join(shots, 'prompt-card.png') });
 });
 
@@ -145,6 +170,28 @@ test('allow grants only this site; reload restores highlights with no click', as
   await highlight(page, '#p2', QUOTE_2);
   await page.waitForTimeout(500);
   await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
+});
+
+test('the card flips above the selection when there is no room below, still without overlap', async () => {
+  const page = await context.newPage();
+  await page.goto(site('e.test'));
+  await clickActionIcon(page);
+  await expect.poll(() => ready(page)).toBe('1');
+  // Put #p2 at the very bottom of the viewport.
+  await page.evaluate(() => {
+    const el = document.querySelector('#p2');
+    const push = innerHeight - el.getBoundingClientRect().bottom - 10;
+    document.body.style.paddingTop = `${push}px`;
+  });
+  expect(await page.evaluate(() => innerHeight - document.querySelector('#p2').getBoundingClientRect().bottom)).toBeLessThan(40);
+  await selectText(page, '#p2', QUOTE_2);
+  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await expect(page.locator('#whn-root >> iframe.prompt')).toBeVisible();
+  await page.waitForTimeout(300);
+  const { card, hl } = await cardAndHighlightRects(page, QUOTE_2);
+  expect(overlaps(card, hl)).toBe(false);
+  expect(card.bottom).toBeLessThanOrEqual(hl.top);
+  await page.close();
 });
 
 test('a site that was never granted does not auto-inject', async () => {

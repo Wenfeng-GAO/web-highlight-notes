@@ -253,17 +253,32 @@ export function mountOverlay() {
     promptOpen() {
       return prompt.classList.contains('open');
     },
-    /** Card 8px below the toolbar's last position, same left edge, kept on screen. */
-    showPrompt(src, toolbarRect) {
+    /**
+     * Card 8px below the selection (and below the toolbar or bubble if they sit
+     * under it), flipped above everything when the viewport has no room below.
+     * `anchor` is the highlight's rect; `obstacles` are other rects to keep clear of.
+     */
+    placePrompt(anchor, obstacles = []) {
+      if (!anchor) return;
       const width = 240;
-      let top = (toolbarRect?.bottom ?? 40) + 8;
-      let left = toolbarRect?.left ?? 8;
-      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
-      top = Math.max(4, Math.min(top, window.innerHeight - 80));
+      const height = prompt.offsetHeight || parseFloat(prompt.style.height) || 64;
+      const near = obstacles.filter((rect) => rect && rect.width && rect.height
+        && rect.left < anchor.right + width && rect.right > anchor.left - width);
+      const below = near.filter((rect) => rect.top >= anchor.top);
+      const above = near.filter((rect) => rect.top < anchor.top);
+      let top = Math.max(anchor.bottom, ...below.map((rect) => rect.bottom)) + 8;
+      if (top + height > window.innerHeight - 4) {
+        const ceiling = Math.min(anchor.top, ...above.map((rect) => rect.top), ...below.map((rect) => rect.top));
+        top = Math.max(4, ceiling - 8 - height);
+      }
+      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
       prompt.style.top = `${Math.round(top)}px`;
       prompt.style.left = `${Math.round(left)}px`;
+    },
+    showPrompt(src, anchor, obstacles) {
       if (prompt.getAttribute('src') !== src) prompt.setAttribute('src', src);
       prompt.classList.add('open');
+      this.placePrompt(anchor, obstacles);
     },
     setPromptHeight(height) {
       if (height > 0 && height < 400) prompt.style.height = `${height + 2}px`;

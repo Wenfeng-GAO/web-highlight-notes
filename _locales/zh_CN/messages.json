@@ -56,19 +56,6 @@
   "panelCopied": {
     "message": "已复制 ✓"
   },
-  "panelCounts": {
-    "message": "$H$ 条划线 · $C$ 条评论",
-    "placeholders": {
-      "h": {
-        "content": "$1",
-        "example": "3"
-      },
-      "c": {
-        "content": "$2",
-        "example": "2"
-      }
-    }
-  },
   "panelSummaryPlaceholder": {
     "message": "页面摘要"
   },
@@ -110,5 +97,41 @@
   },
   "exportDefaultName": {
     "message": "划线笔记"
+  },
+  "countHighlightsOne": {
+    "message": "$COUNT$ 条划线",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countHighlightsOther": {
+    "message": "$COUNT$ 条划线",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countNotesOne": {
+    "message": "$COUNT$ 条评论",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "countNotesOther": {
+    "message": "$COUNT$ 条评论",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
   }
 }
