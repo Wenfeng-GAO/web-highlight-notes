@@ -17,6 +17,8 @@ let storageKey = '';
 let copiedTimer = 0;
 let saveTimer = 0;
 let savedSummary = '';
+let showGeneration = 0;
+let showChain = Promise.resolve();
 
 async function resolveContext() {
   const params = new URLSearchParams(location.search);
@@ -101,19 +103,35 @@ function isEditingSummary() {
   return document.activeElement === summaryEl;
 }
 
-function render() {
+function isWebUrl(url) {
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function render({ urlChanged = false } = {}) {
   const title = record?.title || tabTitle || '未命名页面';
   titleEl.textContent = title;
   const highlights = record?.highlights || [];
   countsEl.textContent = `${highlights.length} 条划线 · ${commentCount(highlights)} 条评论`;
-  // Never clobber in-progress keystrokes; the textarea is source of truth while focused.
-  if (!isEditingSummary()) summaryEl.value = record?.summary || '';
+  const nextSummary = record?.summary || '';
+  const focused = isEditingSummary();
+  // Keep the same textarea node while it is focused. Assign value only when the
+  // page changed, or when the field is idle and storage actually differs.
+  if (urlChanged || (!focused && summaryEl.value !== nextSummary)) {
+    summaryEl.value = nextSummary;
+  }
   renderList();
 }
 
 async function persist() {
   if (!record?.url) return;
-  await chrome.storage.local.set({ [record.url]: toStoredRecord(record) });
+  const key = record.url;
+  const payload = toStoredRecord(record);
+  await chrome.storage.local.set({ [key]: payload });
 }
 
 function syncSummaryFromDom() {
@@ -129,7 +147,9 @@ async function flushSummarySave() {
   const next = record.summary || '';
   if (next === savedSummary) return;
   savedSummary = next;
-  await persist();
+  const key = record.url;
+  const payload = toStoredRecord(record);
+  await chrome.storage.local.set({ [key]: payload });
 }
 
 function scheduleSummarySave() {
@@ -218,48 +238,126 @@ async function onExport() {
   showCopied();
 }
 
-function applyStorageRecord(next) {
-  const editing = isEditingSummary();
-  const localSummary = editing ? summaryEl.value : null;
+function applyStorageRecord(next, { urlChanged = false } = {}) {
+  const pageChanged = urlChanged || !record?.url || record.url !== storageKey;
+  const keepLocalSummary = isEditingSummary() && !pageChanged;
+  const localSummary = summaryEl.value;
+  const storedSummary = next?.summary || '';
   record = next
     ? { ...emptyRecord(storageKey), ...next, url: storageKey }
     : emptyRecord(storageKey);
-  if (editing) {
-    // Keep the live textarea value; a debounced echo must not wipe newer keystrokes.
+  if (!record.title) record.title = tabTitle;
+  if (keepLocalSummary) {
+    // The open textarea is the source of truth. A highlight save or our own
+    // storage echo must not replace it, but a stale stored summary has to be
+    // written back or the latest keystrokes never land.
     record.summary = localSummary;
-  } else {
-    savedSummary = record.summary || '';
-  }
-  render();
-}
-
-async function main() {
-  const context = await resolveContext();
-  tabId = context.tabId;
-  tabTitle = context.tabTitle || '';
-  if (!context.url) {
-    titleEl.textContent = '未打开页面';
-    countsEl.textContent = '0 条划线 · 0 条评论';
-    const empty = document.createElement('li');
-    empty.className = 'empty';
-    empty.textContent = '选中文字即可划线';
-    listEl.appendChild(empty);
+    render({ urlChanged: false });
+    if (storedSummary !== localSummary) {
+      savedSummary = storedSummary;
+      scheduleSummarySave();
+    } else {
+      savedSummary = localSummary;
+    }
     return;
   }
-  storageKey = pageKey(context.url);
+  savedSummary = record.summary || '';
+  render({ urlChanged: pageChanged });
+}
+
+function enqueueShow(task) {
+  const run = showChain.then(task);
+  showChain = run.then(() => undefined, (error) => {
+    console.error(error);
+  });
+  return run;
+}
+
+async function currentWindowId() {
+  const current = await chrome.windows.getCurrent();
+  return current?.id ?? null;
+}
+
+async function showTab(tab) {
+  const url = tab?.url || '';
+  if (!isWebUrl(url)) return;
+  const nextKey = pageKey(url);
+  const nextId = Number.isFinite(tab.id) ? tab.id : null;
+  const nextTitle = tab.title || '';
+  const urlChanged = !record?.url || record.url !== nextKey;
+
+  if (urlChanged) {
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+    await flushSummarySave();
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+  }
+
+  const generation = ++showGeneration;
+  tabId = nextId;
+  tabTitle = nextTitle;
+  storageKey = nextKey;
   const stored = await chrome.storage.local.get(storageKey);
-  record = stored[storageKey]
+  if (generation !== showGeneration) return;
+
+  const next = stored[storageKey]
     ? { ...emptyRecord(storageKey), ...stored[storageKey], url: storageKey }
     : emptyRecord(storageKey);
-  if (!record.title) record.title = tabTitle;
-  savedSummary = record.summary || '';
-  render();
+  if (!next.title) next.title = tabTitle;
+  applyStorageRecord(next, { urlChanged });
+}
 
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes[storageKey]) return;
-    applyStorageRecord(changes[storageKey].newValue);
+function bindTabEvents() {
+  if (!chrome.tabs?.onActivated || !chrome.tabs?.onUpdated || !chrome.windows?.getCurrent) return;
+
+  chrome.tabs.onActivated.addListener((info) => {
+    enqueueShow(async () => {
+      const windowId = await currentWindowId();
+      if (windowId != null && info.windowId !== windowId) return;
+      const tab = await chrome.tabs.get(info.tabId);
+      await showTab(tab);
+    });
   });
 
+  chrome.tabs.onUpdated.addListener((updatedId, changeInfo, tab) => {
+    if (!changeInfo.url && changeInfo.status !== 'complete') return;
+    enqueueShow(async () => {
+      const windowId = await currentWindowId();
+      if (windowId != null && tab.windowId !== windowId) return;
+      const [active] = await chrome.tabs.query({ active: true, windowId: windowId ?? tab.windowId });
+      if (!active || active.id !== updatedId) return;
+      await showTab({
+        id: active.id,
+        url: changeInfo.url || active.url || tab.url || '',
+        title: active.title || tab.title || '',
+      });
+    });
+  });
+}
+
+function showEmpty() {
+  record = null;
+  storageKey = '';
+  tabId = null;
+  titleEl.textContent = '未打开页面';
+  countsEl.textContent = '0 条划线 · 0 条评论';
+  if (!isEditingSummary() && summaryEl.value) summaryEl.value = '';
+  listEl.replaceChildren();
+  const empty = document.createElement('li');
+  empty.className = 'empty';
+  empty.textContent = '选中文字即可划线';
+  listEl.appendChild(empty);
+}
+
+function bindPanelEvents() {
+  bindTabEvents();
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !storageKey || !changes[storageKey]) return;
+    // Drop an in-flight tab read so it cannot paint a record older than this write.
+    showGeneration += 1;
+    applyStorageRecord(changes[storageKey].newValue);
+  });
   summaryEl.addEventListener('input', scheduleSummarySave);
   summaryEl.addEventListener('blur', () => {
     flushSummarySave();
@@ -272,6 +370,27 @@ async function main() {
   });
   exportBtn.addEventListener('click', () => {
     onExport();
+  });
+}
+
+async function main() {
+  bindPanelEvents();
+  const context = await resolveContext();
+  if (context.url && isWebUrl(context.url)) {
+    await enqueueShow(() => showTab({
+      id: context.tabId,
+      url: context.url,
+      title: context.tabTitle,
+    }));
+    return;
+  }
+  showEmpty();
+  if (!chrome.tabs?.query || !chrome.windows?.getCurrent) return;
+  await enqueueShow(async () => {
+    const windowId = await currentWindowId();
+    if (windowId == null) return;
+    const [active] = await chrome.tabs.query({ active: true, windowId });
+    if (active) await showTab(active);
   });
 }
 
