@@ -36,8 +36,8 @@ export function chromeLocaleEnv(locale = 'zh_CN') {
 /**
  * Turn "Allow access to file URLs" on or off for an unpacked extension, the way
  * the chrome://extensions toggle does. Playwright's --load-extension starts with
- * it ON. Toggling reloads the extension; with --load-extension Chrome leaves it
- * disabled after that reload, so enable it again. Returns the new service worker.
+ * it ON. Toggling reloads the extension; this waits for it to come back enabled.
+ * Returns the new service worker.
  */
 export async function setFileAccess(context, extensionId, on) {
   // Like a user flipping "Allow access to file URLs" on chrome://extensions. Developer
