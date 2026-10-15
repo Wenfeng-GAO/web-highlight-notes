@@ -235,12 +235,3 @@ body {
   cursor: pointer;
 }
 
-.notice-note {
-  margin: 12px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #6B7280;
-}
-.notice-note[hidden] {
-  display: none;
-}

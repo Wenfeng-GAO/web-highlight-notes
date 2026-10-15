@@ -125,7 +125,7 @@ const TAB_STATE_PREFIX = 'whn:tab:';
  *  - chrome://, the new tab page, the Web Store: Chrome's error names them -> unsupported;
  *  - a local file while "Allow access to file URLs" is off -> the panel's file-access card;
  *  - about:blank, data:, blob:. With file access off these look exactly like a local file
- *    (same hidden url, same generic error), so they get the card too, with a note.
+ *    (same hidden url, same generic error), so they get the same card; its copy covers both (#11).
  */
 async function noteUnreadableTab(tabId) {
   let href = '';

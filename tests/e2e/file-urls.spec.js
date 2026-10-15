@@ -262,9 +262,9 @@ test('file access off: after the icon click the panel shows the file-access card
   await expect(notice).toBeVisible();
   await expect(panel.locator('#list .empty', { hasText: '此页面不支持划线' })).toHaveCount(0);
   await expect(panel.locator('.app')).toHaveAttribute('data-mode', 'file-access-off');
-  await expect(notice.locator('.notice-title')).toHaveText('需要允许访问本地文件');
-  await expect(notice.locator('.notice-body')).toHaveText('在扩展详情里打开“允许访问文件网址”，就能在本地 HTML 上划线');
-  await expect(notice.locator('.notice-note')).toHaveText('如果这不是本地文件，此页面不支持划线。');
+  await expect(notice.locator('.notice-title')).toHaveText('此页面暂时不能划线');
+  await expect(notice.locator('.notice-body')).toHaveText('如果是本地 HTML 文件，在扩展详情里打开“允许访问文件网址”即可');
+  await expect(notice.getByRole('button', { name: '打开扩展设置' })).toBeVisible();
   await expect(notice).toHaveCSS('background-color', 'rgb(249, 250, 251)');
   await expect(notice).toHaveCSS('border-radius', '8px');
   await expect(notice.locator('.notice-title')).toHaveCSS('font-size', '13px');
