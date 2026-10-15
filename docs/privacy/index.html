@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>隐私政策 / Privacy Policy — Web Highlight Notes</title>
+<link rel="canonical" href="https://wenfeng-gao.github.io/web-highlight-notes/privacy/">
+<meta name="description" content="Web Highlight Notes 0.1.7 隐私政策：笔记只保存在本机 chrome.storage.local，不上传、无账号、无远程服务器。">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header>
+<h1>隐私政策</h1>
+<p>Web Highlight Notes · Privacy Policy · 2026-10-15</p>
+</header>
+<nav>
+<a href="../">手册</a>
+<a href="#summary">摘要</a>
+<a href="#collected">收集</a>
+<a href="#stored">本地存储</a>
+<a href="#permissions">权限</a>
+<a href="#file-urls">本地文件</a>
+<a href="#sites">网站访问</a>
+<a href="#third-parties">第三方</a>
+<a href="#children">儿童</a>
+<a href="#changes">变更</a>
+<a href="#contact">联系</a>
+</nav>
+<main>
+<p>本页说明 Chrome 扩展 <strong>Web Highlight Notes 0.1.7</strong> 如何处理数据。后续版本若数据处理方式不变，本政策继续适用。</p>
+<p lang="en">This page describes how the Chrome extension <strong>Web Highlight Notes 0.1.7</strong> handles data. It keeps applying to later versions that do not change these practices.</p>
+
+<section id="summary">
+<h2>摘要 / Summary</h2>
+<p>Web Highlight Notes 让你在网页上划线、写评论、写页面摘要，并导出 Markdown。</p>
+<p lang="en">Web Highlight Notes lets you highlight text on a page, write comments, write a page summary, and export Markdown.</p>
+<p>划线、评论、摘要，以及你允许或拒绝某个网站自动显示划线的选择，只保存在这台设备上的 <code>chrome.storage.local</code>。扩展没有账号，不使用统计或广告 SDK，没有远程服务器，不上传笔记，也不从网络加载代码。</p>
+<p lang="en">Highlights, comments, summaries, and your choice to allow or decline automatic highlights on a site stay in <code>chrome.storage.local</code> on this device. The extension has no accounts, no analytics or advertising SDKs, no remote servers, does not upload notes, and does not load code from the network.</p>
+<p class="tip">卸载扩展会清除这些本地数据，开发者无法恢复。卸载前请在侧边栏导出 Markdown。</p>
+<p class="tip" lang="en">Uninstalling the extension clears this local data. The developer cannot restore it. Export Markdown from the side panel first.</p>
+</section>
+
+<section id="collected">
+<h2>我们收集的数据 / Data we collect</h2>
+<p>开发者不收集数据。扩展运行时不会把划线、评论、摘要、页面地址或页面内容发送到任何服务器，开发者也看不到这些内容。没有注册、登录或用户标识。</p>
+<p lang="en">The developer collects nothing. While it runs, the extension does not send highlights, comments, summaries, page addresses, or page content to any server, and the developer cannot see them. There is no sign-up, no login, and no user identifier.</p>
+<p>如果你发邮件到文末的地址，那封邮件由你的邮件服务处理，与扩展无关。</p>
+<p lang="en">If you email the address at the end of this page, your mail provider handles that message. The extension is not involved.</p>
+</section>
+
+<section id="stored">
+<h2>保存在本机的数据 / Data stored on your device</h2>
+<p>笔记保存在 Chrome 的 <code>chrome.storage.local</code>，只存在于这台设备上的这份浏览器配置中。不上传，也不同步给开发者。</p>
+<p lang="en">Notes are stored in Chrome's <code>chrome.storage.local</code>, only in this browser profile on this device. They are not uploaded and not synced to the developer.</p>
+<p>每一页一条记录，键是去掉 <code>#</code> 片段后的页面地址。记录里包括：</p>
+<ul>
+<li>页面地址和页面标题</li>
+<li>划线文字，以及前后约 30 个字的上下文，用来在刷新后重新找到原句</li>
+<li>评论，以及关掉气泡时尚未保存的草稿</li>
+<li>页面摘要</li>
+<li>你对某个网站「允许」或「暂不」自动显示划线的选择。拒绝时，本机只记下该网站的来源范围和拒绝时间</li>
+</ul>
+<p lang="en">Each page has one record. The key is the page address with the <code>#</code> fragment removed. A record contains:</p>
+<ul lang="en">
+<li>the page address and title</li>
+<li>the highlighted text, plus about 30 characters of context before and after it, so the sentence can be found again after a reload</li>
+<li>comments, and a draft if you close the bubble before saving</li>
+<li>the page summary</li>
+<li>whether you allowed or declined automatic highlights on a site. A decline stores only that site's origin pattern and the time you declined</li>
+</ul>
+<p>导出时，扩展把笔记复制到剪贴板，并下载一个 <code>.md</code> 文件到你的电脑。文件由你保管，扩展不会把它传走。</p>
+<p lang="en">Export copies the notes to the clipboard and downloads a <code>.md</code> file to your computer. You keep the file. The extension does not transmit it.</p>
+<p>扩展还可能在 <code>chrome.storage.session</code> 里暂存当前标签页能否划线（例如该页不受支持，或尚未打开「允许访问文件网址」）。这不是笔记。标签页关闭或重新加载后会删除，不会上传。</p>
+<p lang="en">The extension may also keep a short-lived flag in <code>chrome.storage.session</code> about whether the current tab can be highlighted (an unsupported page, or file access still off). That flag is not a note. It is removed when the tab closes or reloads, and it is not uploaded.</p>
+</section>
+
+<section id="permissions">
+<h2>权限及用途 / Permissions and why</h2>
+<p>0.1.7 的 <code>manifest.json</code> 在安装时声明下列权限。它们用来在本机完成划线，不用来把数据送出浏览器。</p>
+<p lang="en">Version 0.1.7's <code>manifest.json</code> declares the permissions below at install. They exist so highlighting can work on this device. They are not used to send data out of the browser.</p>
+<h3><code>storage</code></h3>
+<p>把划线、评论、摘要和网站授权选择保存在本机 <code>chrome.storage.local</code>，刷新或再次打开页面时恢复。</p>
+<p lang="en">Saves highlights, comments, summaries, and site allow-or-decline choices in <code>chrome.storage.local</code> on this device, and restores them when the page is opened again.</p>
+<h3><code>sidePanel</code></h3>
+<p>在侧边栏列出当前页的划线和评论，编辑摘要，并导出 Markdown。点击工具栏图标会打开侧边栏。</p>
+<p lang="en">Lists the current page's highlights and comments in the side panel, where you edit the summary and export Markdown. Clicking the toolbar icon opens the side panel.</p>
+<h3><code>activeTab</code></h3>
+<p>只有在你点击工具栏图标或按下对应快捷键时，才在当前标签页启用划线并读取该页地址。没有这次操作，扩展不会因此读取该页。</p>
+<p lang="en">Only when you click the toolbar icon or use its shortcut does the extension enable highlighting on the current tab and read that page's address. Without that action, the extension does not read the page because of this permission.</p>
+<h3><code>scripting</code></h3>
+<p>在你点击之后，向当前页注入划线脚本和样式。对你明确允许的网站注册内容脚本，以便之后打开或刷新时自动显示划线。脚本都打包在扩展内，不从网络下载。扩展不执行远程代码。</p>
+<p lang="en">After you click, injects the highlighter script and styles into the current page. For a site you explicitly allow, registers a content script so highlights come back when you open or reload that site. The scripts are packaged inside the extension and are not downloaded from the network. The extension does not execute remote code.</p>
+</section>
+
+<section id="file-urls">
+<h2>本地文件网址 / File URL access</h2>
+<p><code>host_permissions</code> 包含 <code>file:///*</code>，只用于你自己用浏览器打开的本地 HTML 文件。</p>
+<p lang="en"><code>host_permissions</code> includes <code>file:///*</code>, only for local HTML files you open in the browser yourself.</p>
+<p>Chrome 默认关闭扩展的「允许访问文件网址」（Allow access to file URLs）。只有你在扩展详情里打开这个开关后，扩展才能在这些文件上显示和保存划线。这项主机权限不会在安装时弹出额外警告。</p>
+<p lang="en">Chrome leaves "Allow access to file URLs" off by default. The extension can show and save highlights on those files only after you turn that switch on in the extension's details. This host permission does not add an extra install warning.</p>
+<p>扩展不读取其他本地文件，不扫描磁盘，也不上传文件内容。</p>
+<p lang="en">The extension does not read other local files, does not scan the disk, and does not upload file contents.</p>
+</section>
+
+<section id="sites">
+<h2>可选的网站访问 / Optional site access</h2>
+<p><code>optional_host_permissions</code> 为 <code>http://*/*</code> 和 <code>https://*/*</code>。安装时不授予任何网站权限。</p>
+<p lang="en"><code>optional_host_permissions</code> are <code>http://*/*</code> and <code>https://*/*</code>. No site access is granted at install.</p>
+<p>你在某个 http 或 https 网站划线之后，可以选择只允许这一个网站（例如 <code>https://example.com/*</code>）。Chrome 会弹出它自己的授权框，由你确认。允许之后，刷新或再次打开该网站时会自动显示划线。</p>
+<p lang="en">After you highlight on an http or https site, you can allow that one site only (for example <code>https://example.com/*</code>). Chrome shows its own permission prompt, and you confirm it. After you allow it, highlights come back automatically when you reload or reopen that site.</p>
+<p>点「暂不」或在授权框里拒绝：笔记仍保存在本机，侧边栏仍可列出和导出，只是刷新后不会自动显示，需要再点一次扩展图标。这个选择记在本机。</p>
+<p lang="en">If you decline, or dismiss Chrome's prompt, the notes still stay on the device. The side panel can still list and export them. They just do not reappear automatically after a reload until you click the extension icon again. That choice is stored on the device.</p>
+<p>扩展不会一次申请所有网站。每个网站都要你单独同意。</p>
+<p lang="en">The extension does not request every site at once. Each site needs your own consent.</p>
+</section>
+
+<section id="third-parties">
+<h2>第三方 / Third parties</h2>
+<p>没有。扩展不使用分析、广告、崩溃上报或其他第三方 SDK，不向第三方出售、出租或共享笔记，也没有开发者运营的服务器。</p>
+<p lang="en">None. The extension does not use analytics, advertising, crash-reporting, or other third-party SDKs. It does not sell, rent, or share notes with third parties. The developer does not run a server for it.</p>
+<p>你划线的网页有它们自己的隐私政策。那些网站不是本扩展的服务方。</p>
+<p lang="en">Pages you highlight have their own privacy policies. Those sites are not service providers of this extension.</p>
+<p>本页是放在 GitHub Pages 上的静态文档，供你和商店审核阅读。扩展运行时不会请求本页，也不会连接 GitHub。</p>
+<p lang="en">This page is a static document on GitHub Pages, for you and for store review. The extension does not request this page while it runs, and it does not connect to GitHub.</p>
+</section>
+
+<section id="children">
+<h2>儿童隐私 / Children's privacy</h2>
+<p>本扩展是一般的网页笔记工具，不是面向 13 岁以下儿童的产品。我们不收集个人数据，因此也不会故意收集儿童的个人数据。笔记只留在使用者自己的浏览器里。</p>
+<p lang="en">This extension is a general web-notes tool. It is not directed at children under 13. We do not collect personal data, so we do not knowingly collect personal data from children. Notes stay in the user's own browser.</p>
+</section>
+
+<section id="changes">
+<h2>政策变更 / Changes</h2>
+<p>数据处理方式或本政策有变化时，会更新本页，并修改页首日期。请以本页当前文字为准。扩展不会把政策推送到浏览器里。</p>
+<p lang="en">If the data practices or this policy change, this page is updated and the date at the top changes. The current text of this page is the policy. The extension does not push the policy into the browser.</p>
+</section>
+
+<section id="contact">
+<h2>联系 / Contact</h2>
+<p>隐私问题请发邮件至 <a href="mailto:elricfeng@gmail.com">elricfeng@gmail.com</a>。</p>
+<p lang="en">Privacy questions: <a href="mailto:elricfeng@gmail.com">elricfeng@gmail.com</a>.</p>
+<p>源码与使用手册：<a href="https://github.com/Wenfeng-GAO/web-highlight-notes">github.com/Wenfeng-GAO/web-highlight-notes</a> · <a href="../">使用手册</a></p>
+<p lang="en">Source and manual: <a href="https://github.com/Wenfeng-GAO/web-highlight-notes">github.com/Wenfeng-GAO/web-highlight-notes</a> · <a href="../">User manual</a></p>
+</section>
+</main>
+<footer>Web Highlight Notes · <a href="../">使用手册</a> · <a href="https://github.com/Wenfeng-GAO/web-highlight-notes">GitHub</a> · <a href="mailto:elricfeng@gmail.com">elricfeng@gmail.com</a></footer>
+</body>
+</html>
