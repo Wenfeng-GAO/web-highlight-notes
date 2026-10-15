@@ -57,6 +57,9 @@ test.beforeAll(async () => {
   [worker] = context.serviceWorkers();
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 20000 });
   extensionId = new URL(worker.url()).host;
+  // The worker registers the file:///* content script right after start; pages opened
+  // before that would not get it (a fresh profile race, not something users hit).
+  await expect.poll(() => worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts({ ids: ['whn-auto'] }))[0]?.matches || []), { timeout: 15000 }).toContain('file:///*');
 });
 
 test.afterAll(async () => {
