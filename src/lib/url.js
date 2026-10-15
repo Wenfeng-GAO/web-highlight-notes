@@ -51,5 +51,5 @@ export function isSitePattern(pattern) {
 
 /** Chrome's executeScript error for pages no extension may script (chrome://, the Web Store). */
 export function isUnsupportedPageError(message) {
-  return /Cannot access a chrome|chrome-extension:\/\/|extensions gallery cannot be scripted|devtools:\/\//i.test(String(message || ''));
+  return /Cannot access a chrome|chrome-extension:\/\/|chrome-error:\/\/|extensions gallery cannot be scripted|devtools:\/\//i.test(String(message || ''));
 }

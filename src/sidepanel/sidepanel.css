@@ -187,6 +187,10 @@ body {
 }
 
 /* Non-page states: no counts, summary or export for a page we cannot show. */
+.app[data-mode="file-access-off"] #export,
+.app[data-mode="file-access-off"] #counts,
+.app[data-mode="file-access-off"] #summary,
+.app[data-mode="file-access-off"] #list,
 .app[data-mode="unsupported"] #export,
 .app[data-mode="unsupported"] #counts,
 .app[data-mode="unsupported"] #summary {
@@ -229,4 +233,14 @@ body {
   font-family: var(--font);
   font-size: 13px;
   cursor: pointer;
+}
+
+.notice-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6B7280;
+}
+.notice-note[hidden] {
+  display: none;
 }
