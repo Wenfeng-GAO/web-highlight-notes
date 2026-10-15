@@ -133,5 +133,17 @@
         "example": "3"
       }
     }
+  },
+  "panelFileAccessTitle": {
+    "message": "需要允许访问本地文件"
+  },
+  "panelFileAccessBody": {
+    "message": "在扩展详情里打开“允许访问文件网址”，就能在本地 HTML 上划线"
+  },
+  "panelFileAccessButton": {
+    "message": "打开扩展设置"
+  },
+  "panelUnsupported": {
+    "message": "此页面不支持划线"
   }
 }

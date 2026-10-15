@@ -119,13 +119,13 @@ test.afterAll(async () => {
   if (userDataDir) fs.rmSync(userDataDir, { recursive: true, force: true });
 });
 
-test('manifest asks for no host access at install and drops tabs', async () => {
+test('manifest asks for no website access at install (local files only) and drops tabs', async () => {
   const manifest = await worker.evaluate(() => chrome.runtime.getManifest());
   expect(manifest.permissions.sort()).toEqual(['activeTab', 'scripting', 'sidePanel', 'storage']);
-  expect(manifest.host_permissions || []).toEqual([]);
+  expect(manifest.host_permissions || []).toEqual(['file:///*']);
   expect(manifest.content_scripts || []).toEqual([]);
   expect(manifest.optional_host_permissions).toEqual(['http://*/*', 'https://*/*']);
-  expect((await worker.evaluate(() => chrome.permissions.getAll())).origins).toEqual([]);
+  expect((await worker.evaluate(() => chrome.permissions.getAll())).origins).toEqual(['file:///*']);
 });
 
 test('before any grant: nothing auto-injects; an icon click (activeTab) makes highlighting work and offers the grant card', async () => {
@@ -160,7 +160,7 @@ test('allow grants only this site; reload restores highlights with no click', as
   await expect.poll(() => contains('http://a.test/*')).toBe(true);
   await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
   expect(await contains('http://b.test/*')).toBe(false);
-  await expect.poll(registeredMatches).toEqual(['http://a.test/*']);
+  await expect.poll(registeredMatches).toEqual(['file:///*', 'http://a.test/*']);
 
   await page.reload();
   await expect.poll(() => ready(page)).toBe('1');
@@ -282,7 +282,7 @@ test('「暂不」 declines without the native dialog; 「去授权」 in the si
   await answerPermissionDialog(panel, true);
   await expect.poll(() => contains('http://d.test/*')).toBe(true);
   await expect(panel.locator('#status')).toBeHidden();
-  await expect.poll(registeredMatches).toEqual(['http://a.test/*', 'http://d.test/*']);
+  await expect.poll(registeredMatches).toEqual(['file:///*', 'http://a.test/*', 'http://d.test/*']);
   await page.reload();
   await expect.poll(() => ready(page)).toBe('1');
   await expect(page.locator('.whn-hl', { hasText: QUOTE_1 })).toHaveCount(1);

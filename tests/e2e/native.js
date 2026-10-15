@@ -32,3 +32,28 @@ export async function answerPermissionDialog(page, allow) {
 export function chromeLocaleEnv(locale = 'zh_CN') {
   return { ...process.env, LANGUAGE: locale, LANG: `${locale}.UTF-8` };
 }
+
+/**
+ * Turn "Allow access to file URLs" on or off for an unpacked extension, the way
+ * the chrome://extensions toggle does. Playwright's --load-extension starts with
+ * it ON. Toggling reloads the extension; with --load-extension Chrome leaves it
+ * disabled after that reload, so enable it again. Returns the new service worker.
+ */
+export async function setFileAccess(context, extensionId, on) {
+  const page = await context.newPage();
+  await page.goto(`chrome://extensions/?id=${extensionId}`);
+  const nextWorker = context.waitForEvent('serviceworker', { timeout: 15000 }).catch(() => null);
+  await page.evaluate(([id, allow]) => new Promise((resolve, reject) => {
+    chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, fileAccess: allow }, () => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve();
+    });
+  }), [extensionId, on]);
+  await page.waitForTimeout(800);
+  await page.evaluate((id) => new Promise((resolve) => chrome.management.setEnabled(id, true, () => resolve())), extensionId);
+  const info = await page.evaluate((id) => new Promise((resolve) => chrome.developerPrivate.getExtensionInfo(id, resolve)), extensionId);
+  await page.close();
+  if (info.state !== 'ENABLED' || info.fileAccess.isActive !== on) throw new Error(`file access toggle failed: ${JSON.stringify({ state: info.state, fileAccess: info.fileAccess })}`);
+  const worker = await nextWorker;
+  return worker || context.serviceWorkers().find((w) => w.url().includes(extensionId));
+}
