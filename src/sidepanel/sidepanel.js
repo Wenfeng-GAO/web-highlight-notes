@@ -15,7 +15,6 @@ const statusEl = document.querySelector('#status');
 const appEl = document.querySelector('.app');
 const noticeEl = document.querySelector('#notice');
 const openSettingsEl = document.querySelector('#open-settings');
-const noticeNoteEl = document.querySelector('#notice-note');
 const TAB_STATE_PREFIX = 'whn:tab:';
 let unreadableTabId = null;
 const grantEl = document.querySelector('#grant');
@@ -451,7 +450,6 @@ function showEmpty(message = t('panelEmpty'), title = t('panelNoPage'), mode = '
 function setMode(mode) {
   appEl.dataset.mode = mode;
   noticeEl.hidden = true;
-  noticeNoteEl.hidden = true;
 }
 
 function leavePage(id) {
@@ -499,10 +497,10 @@ async function showUnreadable(id) {
   }
   leavePage(id);
   if (kind === 'file-access-off') {
-    // Most likely a local file with file access off; Chrome hides which page it is.
+    // A local file with file access off, or about:blank / data: / blob:. Chrome shows
+    // these the same way without the tabs permission, so the card's copy covers both.
     showEmpty('', t('panelUntitled'), 'file-access-off');
     noticeEl.hidden = false;
-    noticeNoteEl.hidden = false;
   } else {
     showEmpty(t('panelClickToUse'), t('panelUntitled'));
   }
