@@ -167,12 +167,18 @@ test('file access on: highlights on a local file restore on reload with no click
   await expect(page.locator('.whn-hl')).toHaveCount(2);
   });
 
-test('history.pushState: the panel keeps the key the page saves under', async () => {
+test('history.pushState: the panel and the page agree on the new URL (#7)', async () => {
   const page = context.pages()[0];
   await page.bringToFront();
   await page.evaluate(() => history.pushState({}, '', '?view=2#part'));
+  // The new URL has no notes of its own; the page drops the old marks and the panel matches it.
+  await expect(page.locator('.whn-hl')).toHaveCount(0);
   const panel = await openPanel(await tabIdOf(page));
   await expect(panel.locator('#title')).toHaveText(TITLE);
+  await expect(panel.locator('#counts')).toHaveText('0 条划线 · 0 条评论');
+  await page.bringToFront();
+  await page.goBack();
+  await expect(page.locator('.whn-hl')).toHaveCount(2);
   await expect(panel.locator('#counts')).toHaveText('2 条划线 · 1 条评论');
   await panel.close();
   await page.goto(docUrl);
