@@ -2,6 +2,10 @@
 
 在网页上划线、写评论，并用 Chrome 侧边栏汇总、导出 Markdown 的扩展（Manifest V3，版本 0.1.2）。
 
+![演示](docs/assets/demo.gif)
+
+完整使用手册见 [`docs/`](docs/index.html)（GitHub Pages 站点源文件）。
+
 ## 功能
 
 - 选中网页文字后出现工具条，可以「划线」或「划线+评论」。输入框、文本域和 `contenteditable` 区域不会弹出工具条。
