@@ -7,6 +7,8 @@ nav a{margin:0 8px;color:var(--muted);text-decoration:none}nav a:hover{color:var
 main{max-width:820px;margin:0 auto;padding:24px 20px 64px}
 video,img{max-width:100%;border-radius:8px;border:1px solid #e5e7eb;box-shadow:0 4px 18px #0001}
 h2{margin-top:48px;padding-bottom:6px;border-bottom:2px solid #fde68a}
+section[id]{scroll-margin-top:52px}
+main p[lang="en"],main ul[lang="en"]{color:#3d444d}
 code,kbd{background:var(--soft);padding:1px 6px;border-radius:4px;font-size:.9em}
 .tip{background:#fffbeb;border-left:4px solid var(--accent);padding:10px 14px;border-radius:4px}
 footer{text-align:center;color:var(--muted);font-size:.85rem;padding:24px}
