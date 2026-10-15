@@ -1,11 +1,12 @@
 import { offsetsFromRange } from '../lib/anchor.js';
 import { applyHighlights, paintCommentState } from '../lib/apply.js';
-import { highlightNodes } from '../lib/highlight-dom.js';
+import { highlightNodes, unwrapAll } from '../lib/highlight-dom.js';
 import { emptyRecord, sameRecord, toStoredRecord } from '../lib/model.js';
 import { pageKey } from '../lib/url.js';
 import { mountOverlay } from './overlay.js';
 
-const pageUrl = pageKey(location.href);
+// The storage key. Single-page sites change it with history.pushState; see watchUrl().
+let pageUrl = pageKey(location.href);
 const ui = mountOverlay();
 
 let record = emptyRecord(pageUrl);
@@ -457,9 +458,67 @@ function bindPage() {
   chrome.storage.onChanged.addListener(onStorage);
 }
 
+let switchGeneration = 0;
+
+/**
+ * The address changed without a new document (pushState, replaceState, back/forward
+ * within a single-page site). Notes belong to the new URL now: drop the old page's
+ * marks and load the new key, the same as a reload at that URL would.
+ */
+async function switchPage(next) {
+  const generation = ++switchGeneration;
+  closeBubble();
+  hideToolbar();
+  if (ui.promptOpen()) ui.hidePrompt();
+  pageUrl = next;
+  unwrapAll(document.body);
+  record = emptyRecord(next);
+  const stored = await chrome.storage.local.get(next);
+  if (generation !== switchGeneration) return;
+  record = stored[next] ? { ...emptyRecord(next), ...stored[next], url: next } : emptyRecord(next);
+  await reconcile();
+  chrome.runtime.sendMessage({ type: 'whn:navigated', url: next }).catch(() => {});
+  await settle(generation);
+}
+
+function marksMissing() {
+  if (document.title && document.title !== record.title && record.highlights.length) return true;
+  return record.highlights.some((item) => !item.anchored || !highlightNodes(document.body, item.id).length);
+}
+
+/** The site may render its view after the URL changes; anchor again while it settles. */
+async function settle(generation) {
+  for (const delay of [300, 1000, 2500]) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    if (generation !== switchGeneration) return;
+    if (marksMissing()) await reconcile();
+  }
+}
+
+function checkUrl(event) {
+  const next = pageKey(location.href);
+  if (next !== pageUrl) switchPage(next);
+  // Same page (a hash change, or a history entry with the same URL), but the site may
+  // still re-render the view and drop our marks.
+  else if (event) settle(switchGeneration);
+}
+
+function watchUrl() {
+  // Content scripts cannot hook the page's history.pushState. The Navigation API
+  // reports same-document navigations where Chrome supports it; a short poll covers the rest.
+  globalThis.navigation?.addEventListener?.('navigatesuccess', checkUrl);
+  window.addEventListener('popstate', checkUrl);
+  setInterval(() => checkUrl(null), 500);
+  // Restored from the back/forward cache: storage may have changed while the page was away.
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) switchPage(pageKey(location.href));
+  });
+}
+
 async function init() {
   bindUi();
   bindPage();
+  watchUrl();
   await announceTab();
   const stored = await chrome.storage.local.get(pageUrl);
   record = stored[pageUrl]

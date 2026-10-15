@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>单页应用</title>
+    <style>body { font: 18px/1.8 system-ui, sans-serif; margin: 40px; }</style>
+  </head>
+  <body>
+    <nav><a id="to-a" href="?view=a">甲</a> · <a id="to-b" href="?view=b">乙</a></nav>
+    <main id="view"></main>
+    <script>
+      // A tiny single-page site: links use history.pushState and the view renders a moment later.
+      const views = {
+        a: { title: '甲视图', text: '甲视图的正文：春天的花园里开满了黄色的花。后面还有一些说明文字用来提供足够的上下文。' },
+        b: { title: '乙视图', text: '乙视图的正文：研究者在图书馆发现了一份手稿。这是后文上下文，用来包围这句话。' },
+      };
+      function render() {
+        const view = views[new URLSearchParams(location.search).get('view')] || views.a;
+        document.title = view.title;
+        document.querySelector('#view').innerHTML = `<h1>${view.title}</h1><p id="text">${view.text}</p>`;
+      }
+      for (const link of document.querySelectorAll('nav a')) {
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          history.pushState({}, '', link.getAttribute('href'));
+          document.querySelector('#view').replaceChildren();
+          setTimeout(render, 200);
+        });
+      }
+      window.addEventListener('popstate', () => setTimeout(render, 200));
+      render();
+    </script>
+  </body>
+</html>

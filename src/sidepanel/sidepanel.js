@@ -519,6 +519,11 @@ function bindPanelEvents() {
   chrome.permissions?.onRemoved?.addListener(() => updateStatus());
   grantEl.addEventListener('click', onGrant);
   openSettingsEl.addEventListener('click', openExtensionSettings);
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    // The page moved to a new URL without reloading (single-page sites); follow its key.
+    if (message?.type !== 'whn:navigated' || sender.tab?.id == null || sender.tab.id !== tabId) return;
+    enqueueShow(() => showTab({ id: sender.tab.id }));
+  });
   chrome.storage.onChanged.addListener((changes, area) => {
     // The worker learned why the current unreadable tab is unreadable (after a click).
     if (area === 'session' && unreadableTabId != null && changes[`${TAB_STATE_PREFIX}${unreadableTabId}`]) {
