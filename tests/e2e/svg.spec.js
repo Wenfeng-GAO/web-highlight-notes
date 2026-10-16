@@ -285,7 +285,7 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
   expect((await stored(key)).highlights.map((item) => item.text)).toEqual(['控制面只有在', LABEL, '存疑']);
 });
 
-test('sweep: textPath, rotated SVG text and MathML get no toolbar and stay intact; foreignObject and translated text work', async () => {
+test('sweep: textPath, per-glyph rotate and MathML get no toolbar; a transform on the text itself draws', async () => {
   const page = context.pages()[0];
   const url = docUrl('ns-sweep.html');
   const key = pageKey(url);
@@ -298,7 +298,6 @@ test('sweep: textPath, rotated SVG text and MathML get no toolbar and stay intac
 
   for (const [css, quote] of [
     ['#onpath', '沿着曲线'],
-    ['#turned', '旋转的'],
     ['#perchar', '逐字旋转'],
     ['#switched', '开关里'],
     ['#emc', '能量公式'],
@@ -320,8 +319,9 @@ test('sweep: textPath, rotated SVG text and MathML get no toolbar and stay intac
   await expect(highlightBtn(page)).toBeHidden();
   expect(await snapshot()).toEqual(pristine);
 
-  // Native marks where placement is exact: nested transforms and the text's own translate.
-  for (const [css, quote] of [['#moved', '平移缩放'], ['#shifted', '自带平移'], ['#plain', '平面框标签']]) {
+  // Native marks where placement is exact: nested transforms, the text's own translate,
+  // and the text's own rotate (same glyphs as a parent <g> rotate; #20).
+  for (const [css, quote] of [['#moved', '平移缩放'], ['#shifted', '自带平移'], ['#plain', '平面框标签'], ['#turned', '旋转的']]) {
     await select(page, css, quote);
     await expect(highlightBtn(page), css).toBeVisible();
     await highlightBtn(page).click();
@@ -333,7 +333,12 @@ test('sweep: textPath, rotated SVG text and MathML get no toolbar and stay intac
       range.setEnd(node, node.nodeValue.indexOf(q) + q.length);
       const a = rect.getBoundingClientRect();
       const b = range.getBoundingClientRect();
-      return rect.classList.contains('whn-svg-hl') && Math.abs(a.left - b.left) < 2 && Math.abs(a.right - b.right) < 2 && a.top <= b.top + 1 && a.bottom >= b.bottom - 1;
+      const iw = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const ih = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      const cover = b.width * b.height ? Math.max(0, iw) * Math.max(0, ih) / (b.width * b.height) : 0;
+      const axis = Math.abs(a.left - b.left) < 2 && Math.abs(a.right - b.right) < 2 && a.top <= b.top + 1 && a.bottom >= b.bottom - 1;
+      // Rotated glyphs: the padded rect's axis-aligned box is a little larger, but it still covers them.
+      return rect.classList.contains('whn-svg-hl') && cover > 0.95 && (axis || (a.left <= b.left + 2 && a.right >= b.right - 2 && a.top <= b.top + 2 && a.bottom >= b.bottom - 2));
     }, quote);
     expect(placed, css).toBe(true);
   }
@@ -342,7 +347,7 @@ test('sweep: textPath, rotated SVG text and MathML get no toolbar and stay intac
   await expect(highlightBtn(page)).toBeVisible();
   await highlightBtn(page).click();
   await expect(page.locator('#fo span.whn-hl')).toHaveText('网页段落');
-  await expect.poll(async () => (await stored(key))?.highlights?.length).toBe(4);
+  await expect.poll(async () => (await stored(key))?.highlights?.length).toBe(5);
   // Original SVG <text> nodes are untouched by all of the above.
   expect(await page.evaluate(() => [...document.querySelectorAll('#diagram text')].map((t) => t.outerHTML)))
     .toEqual(await page.evaluate((html) => {
@@ -387,7 +392,7 @@ test('sweep, restore path: legacy records on MathML and textPath leave the text 
   await expect(page.locator('math span, svg text span')).toHaveCount(0);
   await expect.poll(async () => (await stored(key)).highlights.filter((item) => item.id.startsWith('legacy-')).map((item) => item.anchored)).toEqual([false, false, false]);
   // The earlier native marks still render next to the unanchored ones.
-  await expect(page.locator('#diagram rect.whn-svg-hl')).toHaveCount(3);
+  await expect(page.locator('#diagram rect.whn-svg-hl')).toHaveCount(4);
 
   const panel = await openPanel(page);
   await expect(panel.locator('.item.unanchored')).toHaveCount(3);

@@ -124,33 +124,91 @@ function charBox(text, textNode, start, end) {
   return boxes.length ? union(boxes) : null;
 }
 
+function coord(value) {
+  return String(Math.round(value * 1000) / 1000);
+}
+
 /**
- * Where the rect goes, in the coordinates of the <text>'s parent (so it scales with the
- * SVG). Null when it can't be placed accurately: not rendered, rotated or skewed.
+ * Where the rect goes, relative to the <text>.
+ *   ok          a rect in the text's user space; `transform` is the text's own
+ *               transform (empty when an axis-aligned one is already baked in)
+ *   unmeasured  the text is in the DOM but has no glyph box yet (not rendered)
+ *   refuse      a rect cannot track it (<switch>, a singular matrix)
  */
-function svgRectFor(textNode, start, end) {
+function svgPlacement(textNode, start, end) {
   const text = svgTextElement(textNode.parentElement);
   const holder = text?.parentElement;
   // <switch> renders only its first valid child; a rect there would replace the text.
-  if (!holder || holder.localName === 'switch' || typeof text.getCTM !== 'function' || typeof holder.getCTM !== 'function') return null;
-  const textCtm = text.getCTM();
-  const holderCtm = holder.getCTM();
-  if (!textCtm || !holderCtm) return null;
+  if (!text || !holder || holder.localName === 'switch') return { status: 'refuse' };
+  if (typeof text.getCTM !== 'function' || typeof holder.getCTM !== 'function') return { status: 'unmeasured' };
+  let textCtm;
+  let holderCtm;
+  try {
+    textCtm = text.getCTM();
+    holderCtm = holder.getCTM();
+  } catch {
+    return { status: 'unmeasured' };
+  }
+  if (!textCtm || !holderCtm) return { status: 'unmeasured' };
   const m = DOMMatrix.fromMatrix(holderCtm).inverse().multiply(DOMMatrix.fromMatrix(textCtm));
-  if (Math.abs(m.b) > 1e-6 || Math.abs(m.c) > 1e-6 || !m.a || !m.d) return null;
+  if (![m.a, m.b, m.c, m.d, m.e, m.f].every((value) => Number.isFinite(value))) return { status: 'refuse' };
   const box = charBox(text, textNode, start, end);
-  if (!box) return null;
-  const x1 = m.a * box.x + m.e;
-  const x2 = m.a * (box.x + box.width) + m.e;
-  const y1 = m.d * box.y + m.f;
-  const y2 = m.d * (box.y + box.height) + m.f;
+  if (!box) return { status: 'unmeasured' };
+  // A rotation on an ancestor is already in the parent's coordinate system, so the
+  // rect inherits it by being inserted there. A rotation on the <text> itself is not:
+  // copy that transform onto the rect and keep the glyph box in the text's user space.
+  // Translate and scale stay baked into the coordinates, as before.
+  const axisAligned = Math.abs(m.b) <= 1e-6 && Math.abs(m.c) <= 1e-6 && m.a && m.d;
+  if (axisAligned) {
+    const x1 = m.a * box.x + m.e;
+    const x2 = m.a * (box.x + box.width) + m.e;
+    const y1 = m.d * box.y + m.f;
+    const y2 = m.d * (box.y + box.height) + m.f;
+    return {
+      status: 'ok',
+      rect: {
+        text,
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2) - SVG_PAD,
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1) + SVG_PAD * 2,
+        transform: '',
+      },
+    };
+  }
   return {
-    text,
-    x: Math.min(x1, x2),
-    y: Math.min(y1, y2) - SVG_PAD,
-    width: Math.abs(x2 - x1),
-    height: Math.abs(y2 - y1) + SVG_PAD * 2,
+    status: 'ok',
+    rect: {
+      text,
+      x: box.x,
+      y: box.y - SVG_PAD,
+      width: box.width,
+      height: box.height + SVG_PAD * 2,
+      transform: m.toString(),
+    },
   };
+}
+
+function svgHost(textNode) {
+  const text = svgTextElement(textNode.parentElement);
+  if (!text) return null;
+  return text.ownerSVGElement || text.closest('svg');
+}
+
+/** SVGs whose text in this range would be markable once it is actually laid out. */
+export function unmeasuredSvgHosts(range) {
+  const hosts = new Set();
+  for (const portion of collectPortions(range)) {
+    // textPath, per-glyph rotate, MathML: layout will not make these markable.
+    if (portion.kind === 'block') return [];
+    if (portion.kind !== 'svg') continue;
+    const placed = svgPlacement(portion.node, portion.start, portion.end);
+    if (placed.status !== 'unmeasured') continue;
+    if (!portion.node.nodeValue.slice(portion.start, portion.end).trim()) continue;
+    const host = svgHost(portion.node);
+    if (host) hosts.add(host);
+  }
+  return [...hosts];
 }
 
 function collectPortions(range) {
@@ -190,9 +248,9 @@ export function planMarks(range) {
       plan.push(portion);
       continue;
     }
-    const rect = svgRectFor(portion.node, portion.start, portion.end);
-    if (rect) {
-      plan.push({ ...portion, rect });
+    const placed = svgPlacement(portion.node, portion.start, portion.end);
+    if (placed.status === 'ok') {
+      plan.push({ ...portion, rect: placed.rect });
       continue;
     }
     // Collapsed whitespace has no glyphs; anything else we can't place is a stop.
@@ -225,10 +283,11 @@ function drawSvgRect({ rect }, id) {
   const shape = doc.createElementNS(SVG_NS, 'rect');
   shape.setAttribute('class', 'whn-hl whn-svg-hl');
   shape.setAttribute('data-whn-id', id);
-  shape.setAttribute('x', String(rect.x));
-  shape.setAttribute('y', String(rect.y));
-  shape.setAttribute('width', String(rect.width));
-  shape.setAttribute('height', String(rect.height));
+  shape.setAttribute('x', coord(rect.x));
+  shape.setAttribute('y', coord(rect.y));
+  shape.setAttribute('width', coord(rect.width));
+  shape.setAttribute('height', coord(rect.height));
+  if (rect.transform) shape.setAttribute('transform', rect.transform);
   shape.setAttribute('rx', '2');
   shape.setAttribute('fill', 'rgba(250, 204, 21, 0.4)');
   shape.setAttribute('aria-hidden', 'true');
@@ -250,6 +309,8 @@ function setSvgDot(shape, show) {
   if (existing) return;
   const dot = shape.ownerDocument.createElementNS(SVG_NS, 'circle');
   dot.setAttribute('class', 'whn-svg-dot');
+  const transform = shape.getAttribute('transform');
+  if (transform) dot.setAttribute('transform', transform);
   dot.setAttribute('cx', String(Number(shape.getAttribute('x')) + Number(shape.getAttribute('width'))));
   dot.setAttribute('cy', shape.getAttribute('y'));
   dot.setAttribute('r', '3');

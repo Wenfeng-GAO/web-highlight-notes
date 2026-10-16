@@ -1,5 +1,5 @@
 import { findBestMatch, indexText, rangeFromOffsets } from './anchor.js';
-import { highlightNodes, setCommentMarker, unwrapAll, wrapRange } from './highlight-dom.js';
+import { highlightNodes, setCommentMarker, unmeasuredSvgHosts, unwrapAll, wrapRange } from './highlight-dom.js';
 import { compareHighlights, hasComment } from './model.js';
 
 /**
@@ -49,6 +49,28 @@ export function applyHighlights(root, highlights) {
 
   result.sort(compareHighlights);
   return result;
+}
+
+/**
+ * SVGs that contain a saved quote we could not measure. Empty for quotes that are
+ * gone, or that can never be marked (MathML, textPath, per-glyph rotate).
+ */
+export function svgHostsAwaitingLayout(root, highlights) {
+  const indexed = indexText(root);
+  const hosts = new Set();
+  for (const highlight of highlights || []) {
+    if (highlight.anchored !== false) continue;
+    const match = findBestMatch(indexed.text, {
+      exact: highlight.text || '',
+      prefix: highlight.prefix || '',
+      suffix: highlight.suffix || '',
+    });
+    if (!match || indexed.text.slice(match.start, match.end) !== highlight.text) continue;
+    const range = rangeFromOffsets(indexed.segments, match.start, match.end);
+    if (!range) continue;
+    for (const host of unmeasuredSvgHosts(range)) hosts.add(host);
+  }
+  return [...hosts];
 }
 
 export function paintCommentState(root, highlights) {
