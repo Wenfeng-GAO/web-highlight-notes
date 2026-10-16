@@ -30,6 +30,28 @@ let saveTimer = 0;
 let savedSummary = '';
 let showGeneration = 0;
 let showChain = Promise.resolve();
+// Title the content script adopted after a same-document navigation (#19).
+let liveTitle = null;
+let incomingUrl = '';
+
+function rememberLiveTitle(url, title) {
+  const next = typeof title === 'string' ? title : '';
+  if (!next) return;
+  const key = typeof url === 'string' ? url : '';
+  if (key && storageKey && key !== storageKey && key !== incomingUrl) return;
+  liveTitle = { url: key, title: next };
+  paintLiveTitle();
+}
+
+/** Update the heading in place. Rebuilding the list would flicker the notes. */
+function paintLiveTitle() {
+  if (!liveTitle?.title) return;
+  const key = liveTitle.url || '';
+  if (key && storageKey && key !== storageKey) return;
+  tabTitle = liveTitle.title;
+  if (record && (!key || record.url === key || record.url === storageKey)) record.title = liveTitle.title;
+  if (titleEl.textContent !== liveTitle.title) titleEl.textContent = liveTitle.title;
+}
 
 /** Without the tabs permission tab.url is hidden on sites we cannot access; an injected page can still tell us. */
 async function pageInfo(id) {
@@ -349,14 +371,15 @@ async function showTab(tab) {
   let url = tab?.url || '';
   if (Number.isFinite(tab?.id)) {
     // Ask the page first: it knows its URL even when tab.url is hidden, and its key
-    // is the one it saves under (tab.url moves on with history.pushState, the page does not).
+    // is the one it saves under. Its title is the name adopted for that page;
+    // Chrome's tab title can still be the previous view (#19).
     const info = await pageInfo(tab.id);
     if (info?.unsupported) {
       showUnsupported(tab.id);
       return;
     }
     if (info?.url) {
-      tab = { ...tab, url: info.url, title: tab.title || info.title };
+      tab = { ...tab, url: info.url, title: info.title || tab.title || '' };
       url = info.url;
     }
     if (!url) {
@@ -401,6 +424,7 @@ async function showTab(tab) {
     : emptyRecord(storageKey);
   if (!next.title) next.title = tabTitle;
   applyStorageRecord(next, { urlChanged });
+  paintLiveTitle();
 }
 
 function bindTabEvents() {
@@ -518,9 +542,25 @@ function bindPanelEvents() {
   grantEl.addEventListener('click', onGrant);
   openSettingsEl.addEventListener('click', openExtensionSettings);
   chrome.runtime.onMessage.addListener((message, sender) => {
+    const fromThisTab = sender.tab?.id != null && sender.tab.id === tabId;
+    // The view renamed the document after (or as) a same-document navigation.
+    if (message?.type === 'whn:title' && fromThisTab) {
+      rememberLiveTitle(message.url, message.title);
+      return;
+    }
     // The page moved to a new URL without reloading (single-page sites); follow its key.
-    if (message?.type !== 'whn:navigated' || sender.tab?.id == null || sender.tab.id !== tabId) return;
-    enqueueShow(() => showTab({ id: sender.tab.id }));
+    if (message?.type !== 'whn:navigated' || !fromThisTab) return;
+    // Drop a title from an earlier visit so it cannot flash over this one.
+    liveTitle = null;
+    incomingUrl = typeof message.url === 'string' ? message.url : '';
+    const navigatedUrl = incomingUrl;
+    enqueueShow(async () => {
+      try {
+        await showTab({ id: sender.tab.id, url: navigatedUrl });
+      } finally {
+        if (!incomingUrl || incomingUrl === storageKey) incomingUrl = '';
+      }
+    });
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     // The worker learned why the current unreadable tab is unreadable (after a click).
@@ -534,6 +574,8 @@ function bindPanelEvents() {
     // Drop an in-flight tab read so it cannot paint a record older than this write.
     showGeneration += 1;
     applyStorageRecord(changes[storageKey].newValue);
+    // A note save can echo a record from before the document was renamed.
+    paintLiveTitle();
   });
   summaryEl.addEventListener('input', scheduleSummarySave);
   summaryEl.addEventListener('blur', () => {

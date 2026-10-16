@@ -10,24 +10,61 @@
     <main id="view"></main>
     <script>
       // A tiny single-page site: links use history.pushState and the view renders a moment later.
+      // Query mode (?view=a, file://, issue #7) keeps the 200ms render. Path mode (/spa/a, issue #19)
+      // names the document "SPA /spa/a" and waits sessionStorage.delay milliseconds (0 renders now).
       const views = {
         a: { title: '甲视图', text: '甲视图的正文：春天的花园里开满了黄色的花。后面还有一些说明文字用来提供足够的上下文。' },
         b: { title: '乙视图', text: '乙视图的正文：研究者在图书馆发现了一份手稿。这是后文上下文，用来包围这句话。' },
       };
+      const pathMode = /^\/spa\/[^/]+\/?$/.test(location.pathname);
+      function navDelay() {
+        if (!pathMode) return 200;
+        const raw = sessionStorage.getItem('delay');
+        if (raw == null || raw === '') return 0;
+        const n = Number(raw);
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      }
+      function current() {
+        if (pathMode) {
+          const path = location.pathname.replace(/\/$/, '');
+          const id = path.split('/').pop();
+          const text = (views[id] || views.a).text;
+          return { title: `SPA ${path}`, text };
+        }
+        return views[new URLSearchParams(location.search).get('view')] || views.a;
+      }
       function render() {
-        const view = views[new URLSearchParams(location.search).get('view')] || views.a;
+        const view = current();
         document.title = view.title;
         document.querySelector('#view').innerHTML = `<h1>${view.title}</h1><p id="text">${view.text}</p>`;
+      }
+      function scheduleRender() {
+        document.querySelector('#view').replaceChildren();
+        const delay = navDelay();
+        if (delay === 0) render();
+        else setTimeout(render, delay);
+      }
+      if (pathMode) {
+        const linkA = document.querySelector('#to-a');
+        const linkB = document.querySelector('#to-b');
+        linkA.textContent = '页面 A';
+        linkA.setAttribute('href', '/spa/a');
+        linkB.textContent = '页面 B';
+        linkB.setAttribute('href', '/spa/b');
+        const rawReplace = history.replaceState.bind(history);
+        history.replaceState = function (...args) {
+          rawReplace(...args);
+          scheduleRender();
+        };
       }
       for (const link of document.querySelectorAll('nav a')) {
         link.addEventListener('click', (event) => {
           event.preventDefault();
           history.pushState({}, '', link.getAttribute('href'));
-          document.querySelector('#view').replaceChildren();
-          setTimeout(render, 200);
+          scheduleRender();
         });
       }
-      window.addEventListener('popstate', () => setTimeout(render, 200));
+      window.addEventListener('popstate', () => scheduleRender());
       render();
     </script>
   </body>
