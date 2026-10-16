@@ -3,13 +3,21 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const articlePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'article.html');
+const fixtureDir = path.dirname(fileURLToPath(import.meta.url));
+const articlePath = path.join(fixtureDir, 'article.html');
+const spaPath = path.join(fixtureDir, 'spa.html');
 const NEEDLE = '研究者在图书馆发现了一份手稿';
 const REPLACEMENT = '这段文字已经被完全改写';
 
 export function startFixtureServer() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
+    // Path-mode SPA (/spa/a, /spa/b, …). One document; the page switches views itself.
+    if (url.pathname === '/spa' || url.pathname.startsWith('/spa/')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(fs.readFileSync(spaPath));
+      return;
+    }
     if (url.pathname !== '/article.html') {
       res.statusCode = 404;
       res.end('not found');

@@ -2,11 +2,20 @@ import { offsetsFromRange } from '../lib/anchor.js';
 import { applyHighlights, paintCommentState } from '../lib/apply.js';
 import { canMarkRange, highlightNodes, unwrapAll } from '../lib/highlight-dom.js';
 import { emptyRecord, sameRecord, toStoredRecord } from '../lib/model.js';
+import { titleAfterNavigation } from '../lib/title.js';
 import { pageKey } from '../lib/url.js';
 import { mountOverlay } from './overlay.js';
 
 // The storage key. Single-page sites change it with history.pushState; see watchUrl().
 let pageUrl = pageKey(location.href);
+// Title adopted for pageUrl. document.title can lag a single-page navigation (#19).
+let pageTitle = '';
+// Title still showing from the view we just left, until this view renames the document.
+let leftoverTitle = '';
+// False while a navigation is loading the destination, so a title write in that
+// gap is not saved onto the page we are leaving.
+let acceptingTitle = true;
+let switching = false;
 const ui = mountOverlay();
 
 let record = emptyRecord(pageUrl);
@@ -58,9 +67,41 @@ function renderFromRecord() {
   record.highlights = applyHighlights(document.body, record.highlights || []);
 }
 
+/**
+ * Take document.title when it actually belongs to this page.
+ * A same-document navigation leaves the previous title in place until the next
+ * view renders; that leftover must not replace a title we already stored, and
+ * must not be written onto a page that has none yet.
+ * Returns true when the stored title changed and callers should publish it.
+ */
+function adoptDocumentTitle() {
+  if (!acceptingTitle || !record) return false;
+  const live = document.title || '';
+  const chosen = titleAfterNavigation({
+    stored: record.title || '',
+    leftover: leftoverTitle,
+    live,
+  });
+  if (live && leftoverTitle && live !== leftoverTitle) leftoverTitle = '';
+  if (!chosen) return false;
+  pageTitle = chosen;
+  if (chosen === record.title) return false;
+  record.title = chosen;
+  return true;
+}
+
+function publishTitle() {
+  if (!adoptDocumentTitle()) return;
+  const title = record.title || '';
+  if (!title) return;
+  const shouldSave = record.highlights.length > 0 || !!record.summary;
+  if (shouldSave) void persist();
+  chrome.runtime.sendMessage({ type: 'whn:title', url: pageUrl, title }).catch(() => {});
+}
+
 async function reconcile() {
   const before = toStoredRecord(record);
-  if (document.title) record.title = document.title;
+  adoptDocumentTitle();
   renderFromRecord();
   const after = toStoredRecord(record);
   const shouldSave = record.highlights.length > 0 || !!record.summary;
@@ -170,6 +211,10 @@ async function createHighlight(withComment) {
   };
   record.highlights = [...(record.highlights || []), highlight];
   record.title = document.title || record.title;
+  if (record.title) {
+    pageTitle = record.title;
+    if (leftoverTitle && pageTitle !== leftoverTitle) leftoverTitle = '';
+  }
   hideToolbar();
   window.getSelection()?.removeAllRanges();
   suppressToolbar = true;
@@ -433,7 +478,9 @@ function bindUi() {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'whn:info') {
     // Lets the side panel identify this page without the tabs permission.
-    sendResponse({ url: pageUrl, title: document.title || '' });
+    // record.title is the name adopted for this page. document.title is only a
+    // fallback while a single-page view has not renamed the document yet.
+    sendResponse({ url: pageUrl, title: record.title || document.title || '' });
     return false;
   }
   if (message?.type === 'whn:scroll') {
@@ -489,18 +536,36 @@ let switchGeneration = 0;
  */
 async function switchPage(next) {
   const generation = ++switchGeneration;
+  switching = true;
+  acceptingTitle = false;
+  // Snapshot the view we left if the navigate event did not (poll backup).
+  if (!leftoverTitle) leftoverTitle = pageTitle || '';
   closeBubble();
   hideToolbar();
   if (ui.promptOpen()) ui.hidePrompt();
   pageUrl = next;
   unwrapAll(document.body);
   record = emptyRecord(next);
-  const stored = await chrome.storage.local.get(next);
-  if (generation !== switchGeneration) return;
-  record = stored[next] ? { ...emptyRecord(next), ...stored[next], url: next } : emptyRecord(next);
-  await reconcile();
-  chrome.runtime.sendMessage({ type: 'whn:navigated', url: next }).catch(() => {});
-  await settle(generation);
+  try {
+    const stored = await chrome.storage.local.get(next);
+    if (generation !== switchGeneration) return;
+    record = stored[next] ? { ...emptyRecord(next), ...stored[next], url: next } : emptyRecord(next);
+    acceptingTitle = true;
+    await reconcile();
+    if (generation !== switchGeneration) return;
+    // A title already adopted for this page (stored, or set in the same turn).
+    // One that arrives later is published from the <title> observer.
+    if (record.title && record.title !== leftoverTitle) {
+      chrome.runtime.sendMessage({ type: 'whn:title', url: pageUrl, title: record.title }).catch(() => {});
+    }
+    chrome.runtime.sendMessage({ type: 'whn:navigated', url: next }).catch(() => {});
+  } finally {
+    if (generation === switchGeneration) {
+      switching = false;
+      acceptingTitle = true;
+    }
+  }
+  if (generation === switchGeneration) await settle(generation);
 }
 
 function marksMissing() {
@@ -513,24 +578,54 @@ async function settle(generation) {
   for (const delay of [300, 1000, 2500]) {
     await new Promise((resolve) => setTimeout(resolve, delay));
     if (generation !== switchGeneration) return;
+    // The view may rename the document after the URL changes, with or without notes.
+    publishTitle();
     if (marksMissing()) await reconcile();
   }
 }
 
 function checkUrl(event) {
   const next = pageKey(location.href);
-  if (next !== pageUrl) switchPage(next);
+  if (next !== pageUrl) {
+    switchPage(next);
+    return;
+  }
+  if (switching) return;
+  acceptingTitle = true;
   // Same page (a hash change, or a history entry with the same URL), but the site may
-  // still re-render the view and drop our marks.
-  else if (event) settle(switchGeneration);
+  // still re-render the view and drop our marks — or rename the document.
+  if (!event) return;
+  publishTitle();
+  settle(switchGeneration);
+}
+
+function watchTitle() {
+  // document.title writes through the <title> element. Head replacement is covered
+  // by childList; a late text change by characterData. The poll in watchUrl() is
+  // the backup if a page sets the title without touching this tree.
+  const root = document.head || document.documentElement;
+  const observer = new MutationObserver(() => publishTitle());
+  observer.observe(root, { subtree: true, childList: true, characterData: true });
 }
 
 function watchUrl() {
   // Content scripts cannot hook the page's history.pushState. The Navigation API
   // reports same-document navigations where Chrome supports it; a short poll covers the rest.
+  // `navigate` fires inside pushState/replaceState/popstate, before the app renames the document.
+  globalThis.navigation?.addEventListener?.('navigate', (event) => {
+    if (event.destination?.sameDocument === false) return;
+    leftoverTitle = document.title || pageTitle || '';
+    acceptingTitle = false;
+  });
+  globalThis.navigation?.addEventListener?.('navigateerror', () => {
+    if (!switching) acceptingTitle = true;
+  });
   globalThis.navigation?.addEventListener?.('navigatesuccess', checkUrl);
   window.addEventListener('popstate', checkUrl);
-  setInterval(() => checkUrl(null), 500);
+  setInterval(() => {
+    checkUrl(null);
+    if (!switching && acceptingTitle) publishTitle();
+  }, 500);
   // Restored from the back/forward cache: storage may have changed while the page was away.
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) switchPage(pageKey(location.href));
@@ -542,11 +637,15 @@ async function init() {
   bindPage();
   watchUrl();
   await announceTab();
+  acceptingTitle = false;
   const stored = await chrome.storage.local.get(pageUrl);
   record = stored[pageUrl]
     ? { ...emptyRecord(pageUrl), ...stored[pageUrl], url: pageUrl }
     : emptyRecord(pageUrl);
+  acceptingTitle = true;
   await reconcile();
+  pageTitle = record.title || document.title || '';
+  watchTitle();
   document.documentElement.dataset.whnReady = '1';
 }
 
