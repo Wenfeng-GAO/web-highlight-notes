@@ -1,6 +1,7 @@
 import { offsetsFromRange } from '../lib/anchor.js';
-import { applyHighlights, paintCommentState } from '../lib/apply.js';
+import { applyHighlights, paintCommentState, svgHostsAwaitingLayout } from '../lib/apply.js';
 import { canMarkRange, highlightNodes, unwrapAll } from '../lib/highlight-dom.js';
+import { armSvgRelayout } from '../lib/svg-reveal.js';
 import { emptyRecord, sameRecord, toStoredRecord } from '../lib/model.js';
 import { titleAfterNavigation } from '../lib/title.js';
 import { pageKey } from '../lib/url.js';
@@ -63,8 +64,23 @@ async function persist() {
   markSaved();
 }
 
+const svgLayout = { reveal: null, fontArmed: false };
+let reconciling = false;
+let reconcileAgain = false;
+
 function renderFromRecord() {
   record.highlights = applyHighlights(document.body, record.highlights || []);
+  armSvgLayout();
+}
+
+function armSvgLayout() {
+  armSvgRelayout({
+    hosts: svgHostsAwaitingLayout(document.body, record.highlights),
+    fonts: document.fonts,
+    hasSvgMarks: !!document.querySelector('rect.whn-svg-hl'),
+    onRetry: () => { reconcile(); },
+    slot: svgLayout,
+  });
 }
 
 /**
@@ -100,6 +116,23 @@ function publishTitle() {
 }
 
 async function reconcile() {
+  // A reveal or fonts.ready can land while a persist is still in flight.
+  if (reconciling) {
+    reconcileAgain = true;
+    return;
+  }
+  reconciling = true;
+  try {
+    do {
+      reconcileAgain = false;
+      await reconcileOnce();
+    } while (reconcileAgain);
+  } finally {
+    reconciling = false;
+  }
+}
+
+async function reconcileOnce() {
   const before = toStoredRecord(record);
   adoptDocumentTitle();
   renderFromRecord();
@@ -135,7 +168,7 @@ function updateToolbarFromSelection() {
     return;
   }
   // Like input boxes: no toolbar where a mark can't be drawn (MathML, SVG textPath,
-  // rotated SVG text). Better not to offer it than to break the page (#16).
+  // per-glyph rotate). Better not to offer it than to break the page (#16).
   if (!canMarkRange(range)) {
     hideToolbar();
     return;
@@ -540,6 +573,9 @@ async function switchPage(next) {
   acceptingTitle = false;
   // Snapshot the view we left if the navigate event did not (poll backup).
   if (!leftoverTitle) leftoverTitle = pageTitle || '';
+  svgLayout.reveal?.disconnect();
+  svgLayout.reveal = null;
+  svgLayout.fontArmed = false;
   closeBubble();
   hideToolbar();
   if (ui.promptOpen()) ui.hidePrompt();

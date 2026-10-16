@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SVG 显隐与旋转</title>
+<style>
+  body { margin: 24px 32px 48px; font: 16px/1.5 sans-serif; color: #1c1c1c; background: #fff; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  section { margin: 0 0 28px; }
+  svg.fig { width: 720px; height: auto; display: block; background: #fbfcff; border: 1px solid #e2e2e8; border-radius: 10px; }
+  details { width: 720px; border: 1px solid #e2e2e8; border-radius: 10px; padding: 8px 12px 12px; background: #fff; }
+  summary { cursor: pointer; font-weight: 600; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+  .tabs button, #reveal-hidden { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: #eef2ff; border-color: #4f46e5; }
+  #reveal-hidden { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h1>SVG 显隐与旋转</h1>
+
+<section id="fold-section">
+  <h2>折叠示意图</h2>
+  <details id="diagram-details">
+    <summary>展开架构图</summary>
+    <svg class="fig" viewBox="0 0 720 140" role="img" aria-label="折叠图">
+      <rect x="24" y="36" width="200" height="68" rx="10" fill="#e7ecfd"/>
+      <text id="fold-label" x="124" y="78" text-anchor="middle" font-size="28">控制面</text>
+    </svg>
+  </details>
+</section>
+
+<section id="tab-section">
+  <h2>页签示意图</h2>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab-note" aria-selected="true">说明</button>
+    <button type="button" role="tab" id="tab-fig" aria-selected="false">示意图</button>
+  </div>
+  <div role="tabpanel" id="panel-note">示意图在「示意图」页签里。重新打开页面时，这个页签是藏起来的。</div>
+  <div role="tabpanel" id="panel-fig" hidden>
+    <svg class="fig" viewBox="0 0 720 140" role="img" aria-label="页签图">
+      <rect x="24" y="36" width="200" height="68" rx="10" fill="#fde8dc"/>
+      <text id="tab-label" x="124" y="78" text-anchor="middle" font-size="28">数据面</text>
+    </svg>
+  </div>
+</section>
+
+<section id="script-section">
+  <h2>脚本显示</h2>
+  <button type="button" id="reveal-hidden">显示隐藏图</button>
+  <svg id="script-svg" class="fig" style="display:none" viewBox="0 0 720 120" role="img" aria-label="脚本图">
+    <rect x="24" y="28" width="220" height="64" rx="10" fill="#e5f6ea"/>
+    <text id="script-label" x="134" y="70" text-anchor="middle" font-size="28">延迟出现</text>
+  </svg>
+</section>
+
+<section id="spin-section">
+  <h2>旋转文字</h2>
+  <svg class="fig" id="spin" viewBox="0 0 720 280" role="img" aria-label="旋转对照">
+    <text id="own-rot" x="48" y="110" font-size="28" transform="rotate(-28 48 110)">自身旋转标签</text>
+    <g transform="rotate(-28 400 110)">
+      <text id="g-rot" x="400" y="110" font-size="28">父级旋转标签</text>
+    </g>
+    <text id="css-rot" x="48" y="230" font-size="28" style="transform: rotate(-28deg); transform-origin: 48px 230px; transform-box: view-box;">样式旋转标签</text>
+  </svg>
+</section>
+<script>
+  const note = document.getElementById('panel-note');
+  const fig = document.getElementById('panel-fig');
+  const tabNote = document.getElementById('tab-note');
+  const tabFig = document.getElementById('tab-fig');
+  function show(which) {
+    const figOn = which === 'fig';
+    tabNote.setAttribute('aria-selected', figOn ? 'false' : 'true');
+    tabFig.setAttribute('aria-selected', figOn ? 'true' : 'false');
+    if (figOn) {
+      fig.removeAttribute('hidden');
+      note.setAttribute('hidden', '');
+    } else {
+      fig.setAttribute('hidden', '');
+      note.removeAttribute('hidden');
+    }
+  }
+  tabNote.addEventListener('click', () => show('note'));
+  tabFig.addEventListener('click', () => show('fig'));
+  document.getElementById('reveal-hidden').addEventListener('click', () => {
+    document.getElementById('script-svg').style.display = 'block';
+  });
+</script>
+</body>
+</html>
