@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyHighlights } from '../../src/lib/apply.js';
-import { indexText, selectorFromOffsets } from '../../src/lib/anchor.js';
+import { indexText, selectorFromOffsets, selectorFromRange } from '../../src/lib/anchor.js';
 import { unwrapAll, wrapRange } from '../../src/lib/highlight-dom.js';
 
 beforeEach(() => {
@@ -68,6 +68,145 @@ describe('applyHighlights', () => {
     expect(marked).toBe('好世界和');
     expect(document.getElementById('p').textContent).toBe('你好世界和平');
     expect(document.querySelector('.whn-hl-end.whn-has-comment')).toBeTruthy();
+  });
+});
+
+describe('unselected text inside a range', () => {
+  it('does not paint hidden text or a user-select:none line number', () => {
+    document.body.innerHTML = `
+      <p id="a">可见开头</p>
+      <div hidden>隐藏广告</div>
+      <span class="ln" style="user-select: none">9</span>
+      <p id="b">可见结尾</p>
+    `;
+    const range = document.createRange();
+    range.setStart(document.querySelector('#a').firstChild, 0);
+    range.setEnd(document.querySelector('#b').firstChild, '可见结尾'.length);
+    const selector = selectorFromRange(document.body, range);
+    const [applied] = applyHighlights(document.body, [{
+      id: 'span',
+      text: selector.exact,
+      prefix: selector.prefix,
+      suffix: selector.suffix,
+      comment: '',
+      draft: null,
+      createdAt: 1,
+      pos: 0,
+      anchored: null,
+    }]);
+    expect(applied.anchored).toBe(true);
+    const painted = [...document.querySelectorAll('.whn-hl')].map((node) => node.textContent).join('');
+    expect(painted).toContain('可见开头');
+    expect(painted).toContain('可见结尾');
+    expect(painted).not.toContain('隐藏广告');
+    expect(painted).not.toContain('9');
+    expect(document.querySelector('.ln').closest('.whn-hl')).toBeNull();
+  });
+});
+
+describe('legacy line-number quotes', () => {
+  function legacyIndex(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (!parent || !node.nodeValue) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('script, style, noscript, template, #whn-root')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let text = '';
+    const segments = [];
+    let node = walker.nextNode();
+    while (node) {
+      const start = text.length;
+      text += node.nodeValue || '';
+      segments.push({ node, start, end: text.length });
+      node = walker.nextNode();
+    }
+    return { text, segments };
+  }
+
+  function legacySelector(root, startNode, endNode) {
+    const indexed = legacyIndex(root);
+    const start = indexed.segments.find((item) => item.node === startNode).start;
+    const end = indexed.segments.find((item) => item.node === endNode).end;
+    return selectorFromOffsets(indexed.text, start, end);
+  }
+
+  it('rewrites only the locator and leaves the quote and comment untouched', () => {
+    document.body.innerHTML = `
+      <table>
+        <tr>
+          <td style="user-select: none">1</td>
+          <td id="line1">import { offsetsFromRange } from '../lib/anchor.js';</td>
+        </tr>
+        <tr>
+          <td style="user-select: none">2</td>
+          <td id="line2">import { applyHighlights } from '../lib/apply.js';</td>
+        </tr>
+      </table>
+    `;
+    const selector = legacySelector(
+      document.body,
+      document.querySelector('#line1').firstChild,
+      document.querySelector('#line2').firstChild,
+    );
+    const comment = '升级前的批注：不要改任何一个字。';
+    const [applied] = applyHighlights(document.body, [{
+      id: 'legacy',
+      text: selector.exact,
+      prefix: selector.prefix,
+      suffix: selector.suffix,
+      comment,
+      draft: null,
+      createdAt: 1,
+      pos: 0,
+      anchored: true,
+    }]);
+
+    expect(applied.anchored, selector.exact).toBe(true);
+    expect(applied.text).toBe(selector.exact);
+    expect(applied.comment).toBe(comment);
+    expect(applied.exact).toContain('offsetsFromRange');
+    expect(applied.exact).toContain('applyHighlights');
+    expect(applied.exact).not.toBe(selector.exact);
+    expect(applied.prefix).not.toBe(selector.prefix);
+    const painted = [...document.querySelectorAll('.whn-hl')].map((node) => node.textContent).join('');
+    expect(painted).toContain('offsetsFromRange');
+    expect(painted).toContain('applyHighlights');
+    expect(painted).not.toMatch(/(^|\D)2(?=import)/);
+
+    const again = applyHighlights(document.body, [applied])[0];
+    expect(again.anchored).toBe(true);
+    expect(again.text).toBe(selector.exact);
+    expect(again.comment).toBe(comment);
+    expect(again.exact).toBe(applied.exact);
+    expect(again.prefix).toBe(applied.prefix);
+    expect(again.suffix).toBe(applied.suffix);
+  });
+
+  it('keeps a legacy quote that is not on the page, text and comment unchanged', () => {
+    document.body.innerHTML = '<p>页面上是别的句子。</p>';
+    const text = 'const missing = 1;\n        2const gone = 2;';
+    const comment = '丢失笔记的批注也要原样留下。';
+    const [applied] = applyHighlights(document.body, [{
+      id: 'lost',
+      text,
+      prefix: '旧前缀',
+      suffix: '旧后缀',
+      comment,
+      draft: null,
+      createdAt: 1,
+      pos: 4,
+      anchored: true,
+    }]);
+    expect(applied.anchored).toBe(false);
+    expect(applied.text).toBe(text);
+    expect(applied.comment).toBe(comment);
+    expect(applied.prefix).toBe('旧前缀');
+    expect(applied.suffix).toBe('旧后缀');
+    expect(applied.exact).toBeUndefined();
+    expect(document.querySelector('.whn-hl')).toBeNull();
   });
 });
 
