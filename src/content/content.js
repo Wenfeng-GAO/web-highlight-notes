@@ -1,4 +1,4 @@
-import { offsetsFromRange } from '../lib/anchor.js';
+import { findBestMatch, indexText, offsetsFromRange } from '../lib/anchor.js';
 import { applyHighlights, paintCommentState, svgHostsAwaitingLayout } from '../lib/apply.js';
 import { canMarkRange, highlightNodes, unwrapAll } from '../lib/highlight-dom.js';
 import { armSvgRelayout } from '../lib/svg-reveal.js';
@@ -69,8 +69,18 @@ let reconciling = false;
 let reconcileAgain = false;
 
 function renderFromRecord() {
-  record.highlights = applyHighlights(document.body, record.highlights || []);
-  armSvgLayout();
+  // Painting wraps nodes. Ignore those mutations or a wipe-and-restore loop never stops.
+  domObserver?.disconnect();
+  try {
+    record.highlights = applyHighlights(document.body, record.highlights || []);
+    armSvgLayout();
+  } finally {
+    if (domObserver) {
+      armDomObserver();
+      // A rewrite that lands while we are disconnected would otherwise be missed.
+      scheduleDomReconcile();
+    }
+  }
 }
 
 function armSvgLayout() {
@@ -569,6 +579,10 @@ let switchGeneration = 0;
  */
 async function switchPage(next) {
   const generation = ++switchGeneration;
+  domGeneration += 1;
+  stalledText = null;
+  domAttempts = [];
+  clearTimeout(domTimer);
   switching = true;
   acceptingTitle = false;
   // Snapshot the view we left if the navigate event did not (poll backup).
@@ -644,6 +658,96 @@ function watchTitle() {
   observer.observe(root, { subtree: true, childList: true, characterData: true });
 }
 
+// Re-anchor after the page rewrites itself. Init and the post-navigation settle
+// only look for a few seconds; a late paragraph, a hydration pass, or a virtual
+// list can drop the marks (or get them saved as unanchored) after that (#25).
+let domObserver = null;
+let domTimer = null;
+let domGeneration = 0;
+let domAttempts = [];
+let stalledText = null;
+
+function armDomObserver() {
+  const root = document.documentElement;
+  if (!domObserver || !root) return;
+  domObserver.observe(root, { subtree: true, childList: true, characterData: true });
+}
+
+function quoteLocated(indexed, highlight) {
+  const exact = highlight.text || '';
+  if (!exact) return false;
+  const match = findBestMatch(indexed.text, {
+    exact,
+    prefix: highlight.prefix || '',
+    suffix: highlight.suffix || '',
+  });
+  return !!(match && indexed.text.slice(match.start, match.end) === exact);
+}
+
+function domNeedsReconcile() {
+  const highlights = record?.highlights || [];
+  if (!highlights.length || !document.body) return false;
+  let indexed = null;
+  return highlights.some((item) => {
+    const painted = highlightNodes(document.body, item.id).length > 0;
+    if (item.anchored !== false && !painted) return true;
+    if (item.anchored === false) {
+      if (!indexed) indexed = indexText(document.body);
+      return quoteLocated(indexed, item);
+    }
+    return false;
+  });
+}
+
+function scheduleDomReconcile() {
+  clearTimeout(domTimer);
+  domTimer = setTimeout(() => { void reconcileFromDom(); }, 80);
+}
+
+async function reconcileFromDom() {
+  if (switching || !record?.highlights?.length) return;
+  const generation = domGeneration;
+  const before = indexText(document.body).text;
+  // A sanitizer that strips marks leaves the text unchanged. Stop retrying until
+  // the text itself changes, and never more than 8 paints in a 2s burst.
+  if (stalledText !== null && before === stalledText) return;
+  if (!domNeedsReconcile()) {
+    stalledText = null;
+    return;
+  }
+  const now = Date.now();
+  domAttempts = domAttempts.filter((stamp) => now - stamp < 2000);
+  if (domAttempts.length >= 8) {
+    stalledText = before;
+    return;
+  }
+  domAttempts.push(now);
+  domObserver?.disconnect();
+  try {
+    if (generation !== domGeneration || switching) return;
+    await reconcile();
+  } finally {
+    if (generation === domGeneration) armDomObserver();
+  }
+  if (generation !== domGeneration || switching) return;
+  const after = indexText(document.body).text;
+  if (domNeedsReconcile() && after === before) stalledText = after;
+  else stalledText = null;
+}
+
+function watchDom() {
+  domObserver = new MutationObserver((mutations) => {
+    if (switching) return;
+    const outside = mutations.some((mutation) => {
+      const target = mutation.target;
+      const element = target.nodeType === Node.ELEMENT_NODE ? target : target.parentElement;
+      return !element?.closest?.('#whn-root');
+    });
+    if (outside) scheduleDomReconcile();
+  });
+  armDomObserver();
+}
+
 function watchUrl() {
   // Content scripts cannot hook the page's history.pushState. The Navigation API
   // reports same-document navigations where Chrome supports it; a short poll covers the rest.
@@ -672,6 +776,7 @@ async function init() {
   bindUi();
   bindPage();
   watchUrl();
+  watchDom();
   await announceTab();
   acceptingTitle = false;
   const stored = await chrome.storage.local.get(pageUrl);
