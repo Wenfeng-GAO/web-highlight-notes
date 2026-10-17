@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyHighlights } from '../../src/lib/apply.js';
-import { indexText, selectorFromOffsets } from '../../src/lib/anchor.js';
+import { indexText, selectorFromOffsets, selectorFromRange } from '../../src/lib/anchor.js';
 import { unwrapAll, wrapRange } from '../../src/lib/highlight-dom.js';
 
 beforeEach(() => {
@@ -68,6 +68,39 @@ describe('applyHighlights', () => {
     expect(marked).toBe('好世界和');
     expect(document.getElementById('p').textContent).toBe('你好世界和平');
     expect(document.querySelector('.whn-hl-end.whn-has-comment')).toBeTruthy();
+  });
+});
+
+describe('unselected text inside a range', () => {
+  it('does not paint hidden text or a user-select:none line number', () => {
+    document.body.innerHTML = `
+      <p id="a">可见开头</p>
+      <div hidden>隐藏广告</div>
+      <span class="ln" style="user-select: none">9</span>
+      <p id="b">可见结尾</p>
+    `;
+    const range = document.createRange();
+    range.setStart(document.querySelector('#a').firstChild, 0);
+    range.setEnd(document.querySelector('#b').firstChild, '可见结尾'.length);
+    const selector = selectorFromRange(document.body, range);
+    const [applied] = applyHighlights(document.body, [{
+      id: 'span',
+      text: selector.exact,
+      prefix: selector.prefix,
+      suffix: selector.suffix,
+      comment: '',
+      draft: null,
+      createdAt: 1,
+      pos: 0,
+      anchored: null,
+    }]);
+    expect(applied.anchored).toBe(true);
+    const painted = [...document.querySelectorAll('.whn-hl')].map((node) => node.textContent).join('');
+    expect(painted).toContain('可见开头');
+    expect(painted).toContain('可见结尾');
+    expect(painted).not.toContain('隐藏广告');
+    expect(painted).not.toContain('9');
+    expect(document.querySelector('.ln').closest('.whn-hl')).toBeNull();
   });
 });
 
