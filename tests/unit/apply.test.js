@@ -104,6 +104,112 @@ describe('unselected text inside a range', () => {
   });
 });
 
+describe('legacy line-number quotes', () => {
+  function legacyIndex(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (!parent || !node.nodeValue) return NodeFilter.FILTER_REJECT;
+        if (parent.closest('script, style, noscript, template, #whn-root')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let text = '';
+    const segments = [];
+    let node = walker.nextNode();
+    while (node) {
+      const start = text.length;
+      text += node.nodeValue || '';
+      segments.push({ node, start, end: text.length });
+      node = walker.nextNode();
+    }
+    return { text, segments };
+  }
+
+  function legacySelector(root, startNode, endNode) {
+    const indexed = legacyIndex(root);
+    const start = indexed.segments.find((item) => item.node === startNode).start;
+    const end = indexed.segments.find((item) => item.node === endNode).end;
+    return selectorFromOffsets(indexed.text, start, end);
+  }
+
+  it('rewrites only the locator and leaves the quote and comment untouched', () => {
+    document.body.innerHTML = `
+      <table>
+        <tr>
+          <td style="user-select: none">1</td>
+          <td id="line1">import { offsetsFromRange } from '../lib/anchor.js';</td>
+        </tr>
+        <tr>
+          <td style="user-select: none">2</td>
+          <td id="line2">import { applyHighlights } from '../lib/apply.js';</td>
+        </tr>
+      </table>
+    `;
+    const selector = legacySelector(
+      document.body,
+      document.querySelector('#line1').firstChild,
+      document.querySelector('#line2').firstChild,
+    );
+    const comment = '升级前的批注：不要改任何一个字。';
+    const [applied] = applyHighlights(document.body, [{
+      id: 'legacy',
+      text: selector.exact,
+      prefix: selector.prefix,
+      suffix: selector.suffix,
+      comment,
+      draft: null,
+      createdAt: 1,
+      pos: 0,
+      anchored: true,
+    }]);
+
+    expect(applied.anchored, selector.exact).toBe(true);
+    expect(applied.text).toBe(selector.exact);
+    expect(applied.comment).toBe(comment);
+    expect(applied.exact).toContain('offsetsFromRange');
+    expect(applied.exact).toContain('applyHighlights');
+    expect(applied.exact).not.toBe(selector.exact);
+    expect(applied.prefix).not.toBe(selector.prefix);
+    const painted = [...document.querySelectorAll('.whn-hl')].map((node) => node.textContent).join('');
+    expect(painted).toContain('offsetsFromRange');
+    expect(painted).toContain('applyHighlights');
+    expect(painted).not.toMatch(/(^|\D)2(?=import)/);
+
+    const again = applyHighlights(document.body, [applied])[0];
+    expect(again.anchored).toBe(true);
+    expect(again.text).toBe(selector.exact);
+    expect(again.comment).toBe(comment);
+    expect(again.exact).toBe(applied.exact);
+    expect(again.prefix).toBe(applied.prefix);
+    expect(again.suffix).toBe(applied.suffix);
+  });
+
+  it('keeps a legacy quote that is not on the page, text and comment unchanged', () => {
+    document.body.innerHTML = '<p>页面上是别的句子。</p>';
+    const text = 'const missing = 1;\n        2const gone = 2;';
+    const comment = '丢失笔记的批注也要原样留下。';
+    const [applied] = applyHighlights(document.body, [{
+      id: 'lost',
+      text,
+      prefix: '旧前缀',
+      suffix: '旧后缀',
+      comment,
+      draft: null,
+      createdAt: 1,
+      pos: 4,
+      anchored: true,
+    }]);
+    expect(applied.anchored).toBe(false);
+    expect(applied.text).toBe(text);
+    expect(applied.comment).toBe(comment);
+    expect(applied.prefix).toBe('旧前缀');
+    expect(applied.suffix).toBe('旧后缀');
+    expect(applied.exact).toBeUndefined();
+    expect(document.querySelector('.whn-hl')).toBeNull();
+  });
+});
+
 describe('wrapRange', () => {
   it('wraps part of a text node and can unwrap it', () => {
     document.body.innerHTML = '<p id="p">AAA 春天的花园 BBB</p>';

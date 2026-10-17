@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>文件改动</title>
+    <style>
+      body { font: 16px/1.6 ui-monospace, monospace; margin: 32px; color: #1f2328; background: #fff; }
+      h1 { font: 20px/1.4 system-ui, sans-serif; }
+      table { border-collapse: collapse; }
+      td { vertical-align: top; padding: 0 10px; white-space: pre; }
+      .blob-num { user-select: none; color: #656d76; text-align: right; }
+      .blob-code { color: #1f2328; }
+    </style>
+  </head>
+  <body>
+    <h1>Files changed</h1>
+    <table>
+      <tr>
+        <td class="blob-num">1</td>
+        <td class="blob-code" id="line1">import { offsetsFromRange } from '../lib/anchor.js';</td>
+      </tr>
+      <tr>
+        <td class="blob-num">2</td>
+        <td class="blob-code" id="line2">import { applyHighlights } from '../lib/apply.js';</td>
+      </tr>
+      <tr>
+        <td class="blob-num">3</td>
+        <td class="blob-code" id="line3">import { pageKey } from '../lib/url.js';</td>
+      </tr>
+    </table>
+  </body>
+</html>

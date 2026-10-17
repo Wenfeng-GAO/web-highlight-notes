@@ -137,6 +137,61 @@ export function findBestMatch(text, selector) {
   return best;
 }
 
+/**
+ * A quote saved before line numbers were excluded (#26). Gutter digits sat at
+ * the start of a line in that index (`\n        2const beta`). Strip those
+ * digits, then collapse whitespace so the quote can be searched in the new index.
+ * Digits inside a line (`alpha = 1;`) stay.
+ */
+export function normalizeLegacyQuote(value) {
+  const text = String(value ?? '').replace(/\r\n?/g, '\n');
+  const stripped = text.replace(/(^|\n)[ \t]*\d+[ \t]*(?=\n|$|\S)/g, '$1');
+  return stripped.replace(/\s+/g, ' ').trim();
+}
+
+function collapseWithMap(text) {
+  let norm = '';
+  const map = [];
+  let pending = false;
+  let started = false;
+  for (let index = 0; index < text.length; index += 1) {
+    if (/\s/.test(text[index])) {
+      if (started) pending = true;
+      continue;
+    }
+    if (pending) {
+      norm += ' ';
+      map.push(index);
+    }
+    pending = false;
+    started = true;
+    norm += text[index];
+    map.push(index);
+  }
+  return { norm, map };
+}
+
+/**
+ * Find a pre-#27 quote in text from the new index. Offsets point into `text`,
+ * not the collapsed copy. Null when the normalized quote is not there.
+ */
+export function matchLegacyQuote(text, selector) {
+  const exact = normalizeLegacyQuote(selector?.exact ?? selector?.text ?? '');
+  if (!exact) return null;
+  const collapsed = collapseWithMap(String(text ?? ''));
+  const match = findBestMatch(collapsed.norm, {
+    exact,
+    prefix: normalizeLegacyQuote(selector?.prefix || ''),
+    suffix: normalizeLegacyQuote(selector?.suffix || ''),
+  });
+  if (!match || collapsed.norm.slice(match.start, match.end) !== exact) return null;
+  const start = collapsed.map[match.start];
+  const end = collapsed.map[match.end - 1] + 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) return null;
+  if (normalizeLegacyQuote(text.slice(start, end)) !== exact) return null;
+  return { start, end };
+}
+
 export function selectorFromOffsets(text, start, end, contextLen = CONTEXT_LEN) {
   if (!Number.isInteger(start) || !Number.isInteger(end)) return null;
   if (start < 0 || end > text.length || end <= start) return null;

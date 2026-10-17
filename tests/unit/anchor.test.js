@@ -4,6 +4,8 @@ import {
   findBestMatch,
   indexText,
   locateQuote,
+  matchLegacyQuote,
+  normalizeLegacyQuote,
   selectorFromOffsets,
   selectorFromRange,
 } from '../../src/lib/anchor.js';
@@ -149,5 +151,34 @@ describe('locateQuote', () => {
     // The quote itself may sit inside display:none; that has to stay locatable
     // so a hidden diagram can be drawn when it is shown.
     expect(locateQuote(root, { exact: '折叠广告', prefix: '', suffix: '' })).not.toBeNull();
+  });
+});
+
+describe('normalizeLegacyQuote', () => {
+  it('strips gutter digits and collapses whitespace, keeping numbers inside a line', () => {
+    expect(normalizeLegacyQuote('const alpha = 1;\n        2const beta = 2;')).toBe('const alpha = 1; const beta = 2;');
+    expect(normalizeLegacyQuote('line one\n\n  \n  2\n  line two')).toBe('line one line two');
+    expect(normalizeLegacyQuote('1import { offsetsFromRange } from \'../lib/anchor.js\';')).toBe('import { offsetsFromRange } from \'../lib/anchor.js\';');
+    expect(normalizeLegacyQuote('return 1;')).toBe('return 1;');
+  });
+});
+
+describe('matchLegacyQuote', () => {
+  it('maps a gutter quote back onto the new index and uses context', () => {
+    const text = '甲 const shared = 1;\n乙 const shared = 1;';
+    const legacy = '甲 const shared = 1;\n        2乙 const shared = 1;';
+    const start = text.indexOf('乙 const shared = 1;');
+    const match = matchLegacyQuote(text, {
+      exact: legacy.slice(legacy.indexOf('乙')),
+      prefix: '甲 const shared = 1;',
+      suffix: '',
+    });
+    expect(match).not.toBeNull();
+    expect(text.slice(match.start, match.end)).toBe('乙 const shared = 1;');
+    expect(match.start).toBe(start);
+  });
+
+  it('returns null when the quote is gone', () => {
+    expect(matchLegacyQuote('只有别的文字', { exact: 'const alpha = 1;\n2const beta = 2;', prefix: '', suffix: '' })).toBeNull();
   });
 });
