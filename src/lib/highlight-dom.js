@@ -1,4 +1,4 @@
-import { isQuoteText } from './anchor.js';
+import { textFilter } from './anchor.js';
 
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -218,12 +218,18 @@ function collectPortions(range) {
   const scope = ancestor.nodeType === Node.ELEMENT_NODE ? ancestor : ancestor.parentElement;
   if (!scope) return [];
   const doc = scope.ownerDocument || document;
+  // Line numbers are never painted. Hidden HTML between the endpoints is not
+  // part of the selection either. Hidden SVG text stays, so a diagram that is
+  // display:none can still be measured once it is shown (#18).
+  const loose = textFilter({ hide: false });
+  const strict = textFilter({ hide: true });
   const walker = doc.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   const portions = [];
-  const hiddenElements = new WeakMap();
   let current = walker.nextNode();
   while (current) {
-    if (!isQuoteText(current, hiddenElements)) {
+    const parent = current.parentElement;
+    const inSvg = parent?.namespaceURI === SVG_NS || !!parent?.closest?.('svg');
+    if (!loose(current) || (!inSvg && !strict(current))) {
       current = walker.nextNode();
       continue;
     }

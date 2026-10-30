@@ -3,23 +3,61 @@
 export const CONTEXT_LEN = 30;
 
 const SKIP_SELECTOR = 'script, style, noscript, template, #whn-root';
+// SVG <title>/<desc> are in the DOM but never drawn. indexText and the painter
+// both have to skip them, or a selection that crosses an icon stores the title.
+const SILENT_PARENT = new Set(['title', 'desc', 'metadata']);
 
-// Diff tables contain formatting whitespace and hidden copy/line-number text.
-// Neither belongs to the quote a reader selected. Preserve whitespace in code cells.
-export function isQuoteText(node, hiddenElements = new WeakMap()) {
-  const parent = node.parentElement;
-  if (!parent || parent.closest(SKIP_SELECTOR)) return false;
-  // SVG layout retry must still discover quotes inside currently hidden figures.
-  if (parent.namespaceURI !== 'http://www.w3.org/1999/xhtml') return true;
-  if (!node.nodeValue.trim() && parent.closest('table') && /^(TABLE|TBODY|THEAD|TFOOT|TR)$/.test(parent.tagName)) return false;
-  const view = node.ownerDocument.defaultView;
-  for (let el = parent; el; el = el.parentElement) {
-    if (!hiddenElements.has(el)) {
-      hiddenElements.set(el, !!el.hidden || (el.namespaceURI === 'http://www.w3.org/1999/xhtml' && view?.getComputedStyle(el).display === 'none'));
+/**
+ * Which text nodes belong in an index.
+ * `hide` drops text the user did not select (display:none, hidden, visibility).
+ * The restore index leaves that text in, so a quote inside a display:none SVG
+ * can still be found and drawn when the diagram is shown (#18). Line numbers
+ * (user-select: none) and SVG <title> are never part of a quote.
+ * Closed <details> is display:block in Chrome; checkVisibility() is false for it
+ * and must not be used here.
+ */
+export function textFilter({ hide = false } = {}) {
+  const displayCache = new WeakMap();
+
+  function displayHidden(element) {
+    if (displayCache.has(element)) return displayCache.get(element);
+    let hidden = !!element.hidden;
+    if (!hidden && typeof getComputedStyle === 'function') {
+      try {
+        hidden = getComputedStyle(element).display === 'none';
+      } catch {
+        hidden = false;
+      }
     }
-    if (hiddenElements.get(el)) return false;
+    if (!hidden && element.parentElement) hidden = displayHidden(element.parentElement);
+    displayCache.set(element, hidden);
+    return hidden;
   }
-  return true;
+
+  return function include(node) {
+    const parent = node.parentElement;
+    if (!parent || !node.nodeValue) return false;
+    if (parent.closest(SKIP_SELECTOR)) return false;
+    if (SILENT_PARENT.has(parent.localName)) return false;
+    // Diff tables: formatting whitespace between structural rows is not part of a quote.
+    // Keep whitespace inside code cells (td/th/pre/code parents stay).
+    if (!node.nodeValue.trim() && parent.closest('table') && /^(TABLE|TBODY|THEAD|TFOOT|TR)$/.test(parent.tagName)) {
+      return false;
+    }
+    if (typeof getComputedStyle !== 'function') return !hide;
+    let cs;
+    try {
+      cs = getComputedStyle(parent);
+    } catch {
+      return true;
+    }
+    const select = String(cs.userSelect || cs.webkitUserSelect || '').toLowerCase();
+    if (select === 'none') return false;
+    if (!hide) return true;
+    if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
+    if (displayHidden(parent)) return false;
+    return true;
+  };
 }
 
 function docOf(root) {
@@ -30,20 +68,16 @@ function docOf(root) {
  * Concatenate text nodes under root. Offsets are UTF-16 code units and line up
  * with the segments array so matches can cross element boundaries.
  */
-export function indexText(root) {
+export function indexText(root, { hide = false } = {}) {
   const doc = docOf(root);
   const segments = [];
   let text = '';
   if (!root) return { text, segments };
-  const hiddenElements = new WeakMap();
 
+  const include = textFilter({ hide });
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      const parent = node.parentElement;
-      if (!parent) return NodeFilter.FILTER_REJECT;
-      if (!isQuoteText(node, hiddenElements)) return NodeFilter.FILTER_REJECT;
-      if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-      return NodeFilter.FILTER_ACCEPT;
+      return include(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
     },
   });
 
@@ -108,6 +142,75 @@ export function findBestMatch(text, selector) {
   return best;
 }
 
+/**
+ * A quote saved before line numbers were excluded (#26). Gutter digits sat at
+ * the start of a line in that index (`\n        2const beta`). Strip those
+ * digits, then collapse whitespace so the quote can be searched in the new index.
+ * Digits inside a line (`alpha = 1;`) stay.
+ */
+export function normalizeLegacyQuote(value) {
+  const text = String(value ?? '').replace(/\r\n?/g, '\n');
+  const stripped = text.replace(/(^|\n)[ \t]*\d+[ \t]*(?=\n|$|\S)/g, '$1');
+  return stripped.replace(/\s+/g, ' ').trim();
+}
+
+function collapseWithMap(text) {
+  let norm = '';
+  const map = [];
+  let pending = false;
+  let started = false;
+  for (let index = 0; index < text.length; index += 1) {
+    if (/\s/.test(text[index])) {
+      if (started) pending = true;
+      continue;
+    }
+    if (pending) {
+      norm += ' ';
+      map.push(index);
+    }
+    pending = false;
+    started = true;
+    norm += text[index];
+    map.push(index);
+  }
+  return { norm, map };
+}
+
+/**
+ * Find a pre-#27 quote in text from the new index. Offsets point into `text`,
+ * not the collapsed copy. Null when the normalized quote is not there.
+ */
+function stripWithMap(text) {
+  let norm = '';
+  const map = [];
+  for (let index = 0; index < text.length; index += 1) {
+    if (/\s/.test(text[index])) continue;
+    norm += text[index];
+    map.push(index);
+  }
+  return { norm, map };
+}
+
+export function matchLegacyQuote(text, selector) {
+  // Structural table whitespace may be absent from the post-#30 index while a
+  // pre-#27 quote still carries it. Strip ALL whitespace on both sides so gutter
+  // digits (already removed by normalizeLegacyQuote) and formatting gaps align.
+  const exact = normalizeLegacyQuote(selector?.exact ?? selector?.text ?? '').replace(/\s+/g, '');
+  if (!exact) return null;
+  const collapsed = stripWithMap(String(text ?? ''));
+  const match = findBestMatch(collapsed.norm, {
+    exact,
+    prefix: normalizeLegacyQuote(selector?.prefix || '').replace(/\s+/g, ''),
+    suffix: normalizeLegacyQuote(selector?.suffix || '').replace(/\s+/g, ''),
+  });
+  if (!match || collapsed.norm.slice(match.start, match.end) !== exact) return null;
+  const start = collapsed.map[match.start];
+  const end = collapsed.map[match.end - 1] + 1;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) return null;
+  if (normalizeLegacyQuote(text.slice(start, end)).replace(/\s+/g, '') !== exact) return null;
+  return { start, end };
+}
+
 export function selectorFromOffsets(text, start, end, contextLen = CONTEXT_LEN) {
   if (!Number.isInteger(start) || !Number.isInteger(end)) return null;
   if (start < 0 || end > text.length || end <= start) return null;
@@ -142,7 +245,8 @@ function mapPoint(segments, container, offset) {
 
 export function offsetsFromRange(root, range, contextLen = CONTEXT_LEN) {
   if (!root || !range) return null;
-  const indexed = indexText(root);
+  // New quotes follow the selection: no line numbers, no hidden interstitial text.
+  const indexed = indexText(root, { hide: true });
   const start = mapPoint(indexed.segments, range.startContainer, range.startOffset);
   const end = mapPoint(indexed.segments, range.endContainer, range.endOffset);
   if (start == null || end == null || end <= start) return null;
@@ -191,15 +295,20 @@ export function rangeFromOffsets(segments, start, end) {
 
 /** Locate a quote in a DOM root. Returns null when the exact text is gone. */
 export function locateQuote(root, selector) {
-  const indexed = indexText(root);
   const quote = {
     exact: selector?.exact ?? selector?.text ?? '',
     prefix: selector?.prefix || '',
     suffix: selector?.suffix || '',
   };
-  const match = findBestMatch(indexed.text, quote);
-  if (!match) return null;
-  const range = rangeFromOffsets(indexed.segments, match.start, match.end);
-  if (!range) return null;
-  return { ...match, range };
+  // Full index first (quotes inside display:none). Then the selection index,
+  // whose exact text skips hidden nodes a drag crossed.
+  for (const hide of [false, true]) {
+    const indexed = indexText(root, { hide });
+    const match = findBestMatch(indexed.text, quote);
+    if (!match || indexed.text.slice(match.start, match.end) !== quote.exact) continue;
+    const range = rangeFromOffsets(indexed.segments, match.start, match.end);
+    if (!range) continue;
+    return { ...match, range };
+  }
+  return null;
 }

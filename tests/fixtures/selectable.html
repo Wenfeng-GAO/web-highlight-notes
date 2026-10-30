@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>划线只保留选中的字</title>
+    <style>
+      body { font: 18px/1.7 sans-serif; margin: 48px auto; max-width: 720px; }
+      .ln { user-select: none; color: #888; display: inline-block; width: 1.5em; }
+      .src { font-family: ui-monospace, monospace; }
+      .line { font-family: ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <div id="code">
+      <div class="line"><span class="ln">1</span><span class="src">const alpha = 1;</span></div>
+      <div class="line"><span class="ln">2</span><span class="src">const beta = 2;</span></div>
+    </div>
+    <p id="a">可见的开头句子伽玛在这里结束。</p>
+    <div hidden>隐藏广告文案不要出现在划线里</div>
+    <p id="b">可见的结尾句子德尔塔从这里开始。</p>
+    <p id="reselect" style="user-select: none"><span id="keep" style="user-select: text">这段重新可选的文字应该能划线。</span></p>
+    <details id="fold">
+      <summary>更多</summary>
+      <p id="folded">折叠区域里的句子在关闭后刷新仍应定位。</p>
+    </details>
+  </body>
+</html>
