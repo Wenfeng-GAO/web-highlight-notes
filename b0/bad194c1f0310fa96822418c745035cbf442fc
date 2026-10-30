@@ -1,0 +1,41 @@
+src/lib/anchor.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 6-8,10-30,32-34,36-60,71,77,80,145-192,195,204-205
+  s_77e046dcd34c6b::t_4251e5f53f3fe1 193-194
+  s_77e046dcd34c6b::t_7695e676053a38 196-198,201-203
+  s_77e046dcd34c6b::t_2c4d3f6013aab1 206-208
+tests/fixtures/selectable.html
+  s_77e046dcd34c6b::t_c2467cf6220c01 1-27
+tests/unit/apply.test.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 3,74-211
+  s_77e046dcd34c6b::t_dd6ddd0ede7edb 212
+src/lib/apply.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 1,9-69,76-77,81-86,88-89,94-95,125,127,131
+tests/fixtures/diff.html
+  s_77e046dcd34c6b::t_c2467cf6220c01 1-32
+src/lib/model.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 34-49
+src/lib/highlight-dom.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 1,221-225,230-232
+tests/e2e/selectable.spec.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 1-168
+tests/unit/anchor.test.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 7-8,127-196
+tests/e2e/legacy-anchor.spec.js
+  s_77e046dcd34c6b::t_c2467cf6220c01 1-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b0bad194c1f0310fa96822418c745035cbf442fc",
+  "prompts": {},
+  "sessions": {
+    "s_77e046dcd34c6b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a18b82-babb-7752-b5fd-0913753bcf9b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "恒拙 <hengzhuo.gwf@antgroup.com>"
+    }
+  }
+}
