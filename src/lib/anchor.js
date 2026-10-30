@@ -39,6 +39,11 @@ export function textFilter({ hide = false } = {}) {
     if (!parent || !node.nodeValue) return false;
     if (parent.closest(SKIP_SELECTOR)) return false;
     if (SILENT_PARENT.has(parent.localName)) return false;
+    // Diff tables: formatting whitespace between structural rows is not part of a quote.
+    // Keep whitespace inside code cells (td/th/pre/code parents stay).
+    if (!node.nodeValue.trim() && parent.closest('table') && /^(TABLE|TBODY|THEAD|TFOOT|TR)$/.test(parent.tagName)) {
+      return false;
+    }
     if (typeof getComputedStyle !== 'function') return !hide;
     let cs;
     try {
@@ -175,20 +180,34 @@ function collapseWithMap(text) {
  * Find a pre-#27 quote in text from the new index. Offsets point into `text`,
  * not the collapsed copy. Null when the normalized quote is not there.
  */
+function stripWithMap(text) {
+  let norm = '';
+  const map = [];
+  for (let index = 0; index < text.length; index += 1) {
+    if (/\s/.test(text[index])) continue;
+    norm += text[index];
+    map.push(index);
+  }
+  return { norm, map };
+}
+
 export function matchLegacyQuote(text, selector) {
-  const exact = normalizeLegacyQuote(selector?.exact ?? selector?.text ?? '');
+  // Structural table whitespace may be absent from the post-#30 index while a
+  // pre-#27 quote still carries it. Strip ALL whitespace on both sides so gutter
+  // digits (already removed by normalizeLegacyQuote) and formatting gaps align.
+  const exact = normalizeLegacyQuote(selector?.exact ?? selector?.text ?? '').replace(/\s+/g, '');
   if (!exact) return null;
-  const collapsed = collapseWithMap(String(text ?? ''));
+  const collapsed = stripWithMap(String(text ?? ''));
   const match = findBestMatch(collapsed.norm, {
     exact,
-    prefix: normalizeLegacyQuote(selector?.prefix || ''),
-    suffix: normalizeLegacyQuote(selector?.suffix || ''),
+    prefix: normalizeLegacyQuote(selector?.prefix || '').replace(/\s+/g, ''),
+    suffix: normalizeLegacyQuote(selector?.suffix || '').replace(/\s+/g, ''),
   });
   if (!match || collapsed.norm.slice(match.start, match.end) !== exact) return null;
   const start = collapsed.map[match.start];
   const end = collapsed.map[match.end - 1] + 1;
   if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) return null;
-  if (normalizeLegacyQuote(text.slice(start, end)) !== exact) return null;
+  if (normalizeLegacyQuote(text.slice(start, end)).replace(/\s+/g, '') !== exact) return null;
   return { start, end };
 }
 

@@ -621,3 +621,10 @@ main().catch((error) => {
   console.error(error);
   titleEl.textContent = t('panelLoadFailed');
 });
+
+// Includes dynamically created comment editors as well as search and summary.
+for (const type of ['keydown', 'keypress', 'keyup']) {
+  document.addEventListener(type, (event) => {
+    if (event.target.closest?.('input, textarea, [contenteditable="true"]')) event.stopPropagation();
+  });
+}

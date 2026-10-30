@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>动态正文</title>
+    <style>
+      body { font: 18px/1.7 system-ui, sans-serif; margin: 40px; max-width: 720px; }
+      p { margin: 18px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>动态正文</h1>
+    <p id="late">加载中…</p>
+    <p id="stable">稳定段落里的这句话用来划线，然后被同样的文字换掉节点。</p>
+    <p id="virtual">虚拟列表里的句子先被清掉再原样放回来。</p>
+    <script>
+      const lateText = '迟到的正文句子在加载完成后才出现在页面上。';
+      const delay = Number(new URLSearchParams(location.search).get('delay') || 0);
+      const late = document.querySelector('#late');
+      if (delay > 0) setTimeout(() => { late.textContent = lateText; }, delay);
+      else late.textContent = lateText;
+    </script>
+  </body>
+</html>
