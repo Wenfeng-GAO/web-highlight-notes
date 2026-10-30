@@ -31,17 +31,22 @@ export function toStoredRecord(record) {
     url: record.url,
     title: record.title || '',
     summary: record.summary || '',
-    highlights: (record.highlights || []).map((highlight) => ({
-      id: highlight.id,
-      text: highlight.text || '',
-      prefix: highlight.prefix || '',
-      suffix: highlight.suffix || '',
-      comment: highlight.comment || '',
-      draft: highlight.draft ?? null,
-      createdAt: highlight.createdAt || 0,
-      pos: typeof highlight.pos === 'number' ? highlight.pos : null,
-      anchored: typeof highlight.anchored === 'boolean' ? highlight.anchored : null,
-    })),
+    highlights: (record.highlights || []).map((highlight) => {
+      const stored = {
+        id: highlight.id,
+        text: highlight.text || '',
+        prefix: highlight.prefix || '',
+        suffix: highlight.suffix || '',
+        comment: highlight.comment || '',
+        draft: highlight.draft ?? null,
+        createdAt: highlight.createdAt || 0,
+        pos: typeof highlight.pos === 'number' ? highlight.pos : null,
+        anchored: typeof highlight.anchored === 'boolean' ? highlight.anchored : null,
+      };
+      // Set only after a legacy quote is rewritten onto the new index (#29).
+      if (highlight.exact) stored.exact = highlight.exact;
+      return stored;
+    }),
   };
 }
 

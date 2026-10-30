@@ -4,6 +4,8 @@ import {
   findBestMatch,
   indexText,
   locateQuote,
+  matchLegacyQuote,
+  normalizeLegacyQuote,
   selectorFromOffsets,
   selectorFromRange,
 } from '../../src/lib/anchor.js';
@@ -108,5 +110,75 @@ describe('locateQuote', () => {
   it('ignores script and style text', () => {
     const root = mount('<p>可见正文</p><script>秘密</script><style>.x{color:red}</style>');
     expect(indexText(root).text).toBe('可见正文');
+  });
+
+  // Issue #26: the saved quote matches the selection. Hidden text stays in the
+  // full index so a diagram that is display:none can still be found (#18).
+  it('omits unselectable and hidden text from a new quote, and still locates hidden text', () => {
+    const root = mount(`
+      <p id="a">可见开头</p>
+      <div hidden>隐藏广告</div>
+      <span style="user-select: none">9</span>
+      <div style="display: none"><p>折叠广告</p></div>
+      <div style="visibility: hidden">看不见</div>
+      <div style="user-select: none"><span style="user-select: text">重新可选</span></div>
+      <svg><title>示意图标题</title><desc>示意图说明</desc><text>控制面</text></svg>
+      <p id="b">可见结尾</p>
+    `);
+    const text = indexText(root).text;
+    expect(text).toContain('可见开头');
+    expect(text).toContain('隐藏广告');
+    expect(text).toContain('折叠广告');
+    expect(text).toContain('重新可选');
+    expect(text).toContain('控制面');
+    expect(text).not.toContain('示意图标题');
+    expect(text).not.toContain('示意图说明');
+    expect(text).not.toContain('9');
+
+    const range = root.ownerDocument.createRange();
+    range.setStart(root.querySelector('#a').firstChild, 0);
+    range.setEnd(root.querySelector('#b').firstChild, '可见结尾'.length);
+    const selector = selectorFromRange(root, range);
+    expect(selector.exact).toContain('可见开头');
+    expect(selector.exact).toContain('可见结尾');
+    expect(selector.exact).not.toContain('隐藏广告');
+    expect(selector.exact).not.toContain('折叠广告');
+    expect(selector.exact).not.toContain('看不见');
+    expect(selector.exact).not.toContain('9');
+    expect(selector.exact).not.toContain('示意图标题');
+
+    expect(locateQuote(root, selector)).not.toBeNull();
+    // The quote itself may sit inside display:none; that has to stay locatable
+    // so a hidden diagram can be drawn when it is shown.
+    expect(locateQuote(root, { exact: '折叠广告', prefix: '', suffix: '' })).not.toBeNull();
+  });
+});
+
+describe('normalizeLegacyQuote', () => {
+  it('strips gutter digits and collapses whitespace, keeping numbers inside a line', () => {
+    expect(normalizeLegacyQuote('const alpha = 1;\n        2const beta = 2;')).toBe('const alpha = 1; const beta = 2;');
+    expect(normalizeLegacyQuote('line one\n\n  \n  2\n  line two')).toBe('line one line two');
+    expect(normalizeLegacyQuote('1import { offsetsFromRange } from \'../lib/anchor.js\';')).toBe('import { offsetsFromRange } from \'../lib/anchor.js\';');
+    expect(normalizeLegacyQuote('return 1;')).toBe('return 1;');
+  });
+});
+
+describe('matchLegacyQuote', () => {
+  it('maps a gutter quote back onto the new index and uses context', () => {
+    const text = '甲 const shared = 1;\n乙 const shared = 1;';
+    const legacy = '甲 const shared = 1;\n        2乙 const shared = 1;';
+    const start = text.indexOf('乙 const shared = 1;');
+    const match = matchLegacyQuote(text, {
+      exact: legacy.slice(legacy.indexOf('乙')),
+      prefix: '甲 const shared = 1;',
+      suffix: '',
+    });
+    expect(match).not.toBeNull();
+    expect(text.slice(match.start, match.end)).toBe('乙 const shared = 1;');
+    expect(match.start).toBe(start);
+  });
+
+  it('returns null when the quote is gone', () => {
+    expect(matchLegacyQuote('只有别的文字', { exact: 'const alpha = 1;\n2const beta = 2;', prefix: '', suffix: '' })).toBeNull();
   });
 });
