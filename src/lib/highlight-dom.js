@@ -1,3 +1,5 @@
+import { isQuoteText } from './anchor.js';
+
 const HTML_NS = 'http://www.w3.org/1999/xhtml';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // SVG elements whose text is never drawn, or is drawn somewhere else (<use>, masks).
@@ -218,10 +220,10 @@ function collectPortions(range) {
   const doc = scope.ownerDocument || document;
   const walker = doc.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
   const portions = [];
+  const hiddenElements = new WeakMap();
   let current = walker.nextNode();
   while (current) {
-    const parent = current.parentElement;
-    if (parent?.closest('script, style, noscript, template, #whn-root')) {
+    if (!isQuoteText(current, hiddenElements)) {
       current = walker.nextNode();
       continue;
     }

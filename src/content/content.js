@@ -511,11 +511,15 @@ function bindUi() {
     persist();
   });
   ui.textarea.addEventListener('keydown', (event) => {
+    event.stopPropagation();
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
       saveBubble();
     }
   });
+  for (const type of ['keypress', 'keyup']) {
+    ui.textarea.addEventListener(type, (event) => event.stopPropagation());
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -689,7 +693,9 @@ function domNeedsReconcile() {
   if (!highlights.length || !document.body) return false;
   let indexed = null;
   return highlights.some((item) => {
-    const painted = highlightNodes(document.body, item.id).length > 0;
+    const marks = highlightNodes(document.body, item.id);
+    const painted = marks.length > 0 && (marks.some((node) => node.namespaceURI === 'http://www.w3.org/2000/svg')
+      || marks.map((node) => indexText(node).text).join('') === item.text);
     if (item.anchored !== false && !painted) return true;
     if (item.anchored === false) {
       if (!indexed) indexed = indexText(document.body);

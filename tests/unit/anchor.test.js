@@ -17,6 +17,19 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
+it('indexes cross-row code without hidden metadata or table formatting whitespace', () => {
+  const root = mount('<table><tbody>\n<tr><td>const first = alpha();</td></tr>\n<tr><td><span style="display:none">metadata</span>const second = beta();</td></tr>\n<tr><td>const third = gamma();</td></tr>\n</tbody></table>');
+  const cells = root.querySelectorAll('td');
+  const range = document.createRange();
+  range.setStart(cells[0].firstChild, 6);
+  range.setEnd(cells[2].firstChild, cells[2].firstChild.length);
+  const selector = selectorFromRange(root, range);
+  expect(selector.exact).toBe('first = alpha();const second = beta();const third = gamma();');
+  root.innerHTML = '<table><tbody><tr><td>const first = alpha();</td></tr><tr><td><span hidden>different metadata</span>const second = beta();</td></tr><tr><td>const third = gamma();</td></tr></tbody></table>';
+  expect(locateQuote(root, selector)).not.toBeNull();
+  expect(indexText(root).text).toContain('const first = alpha();');
+});
+
 describe('findBestMatch', () => {
   it('returns null when the exact quote was removed', () => {
     const text = '春天的花园里开满了黄色的花';

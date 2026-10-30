@@ -4,6 +4,24 @@ export const CONTEXT_LEN = 30;
 
 const SKIP_SELECTOR = 'script, style, noscript, template, #whn-root';
 
+// Diff tables contain formatting whitespace and hidden copy/line-number text.
+// Neither belongs to the quote a reader selected. Preserve whitespace in code cells.
+export function isQuoteText(node, hiddenElements = new WeakMap()) {
+  const parent = node.parentElement;
+  if (!parent || parent.closest(SKIP_SELECTOR)) return false;
+  // SVG layout retry must still discover quotes inside currently hidden figures.
+  if (parent.namespaceURI !== 'http://www.w3.org/1999/xhtml') return true;
+  if (!node.nodeValue.trim() && parent.closest('table') && /^(TABLE|TBODY|THEAD|TFOOT|TR)$/.test(parent.tagName)) return false;
+  const view = node.ownerDocument.defaultView;
+  for (let el = parent; el; el = el.parentElement) {
+    if (!hiddenElements.has(el)) {
+      hiddenElements.set(el, !!el.hidden || (el.namespaceURI === 'http://www.w3.org/1999/xhtml' && view?.getComputedStyle(el).display === 'none'));
+    }
+    if (hiddenElements.get(el)) return false;
+  }
+  return true;
+}
+
 function docOf(root) {
   return root?.ownerDocument || document;
 }
@@ -17,12 +35,13 @@ export function indexText(root) {
   const segments = [];
   let text = '';
   if (!root) return { text, segments };
+  const hiddenElements = new WeakMap();
 
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
       if (!parent) return NodeFilter.FILTER_REJECT;
-      if (parent.closest(SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
+      if (!isQuoteText(node, hiddenElements)) return NodeFilter.FILTER_REJECT;
       if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },

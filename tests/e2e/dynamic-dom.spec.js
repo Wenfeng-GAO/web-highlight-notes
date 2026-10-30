@@ -44,6 +44,23 @@ test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {
   docDir = fs.mkdtempSync(path.join(os.tmpdir(), 'whn-dynamic-'));
   fs.copyFileSync(path.join(root, 'tests/fixtures/dynamic.html'), path.join(docDir, 'dynamic.html'));
+  fs.writeFileSync(path.join(docDir, 'files.html'), `<!doctype html><meta charset="utf-8">
+    <style>td { white-space: pre; } .hidden { display:none }</style>
+    <input id="host-search"><table><tbody id="diff">
+    <tr><td id="line57">const first = alpha();</td></tr>
+    <tr><td id="line58"><span class="hidden">copy metadata</span>const second = beta();</td></tr>
+    <tr><td id="line59">const third = gamma();</td></tr>
+    </tbody></table><script>
+    window.stolen = 0;
+    for (const type of ['keydown', 'keypress', 'keyup']) document.addEventListener(type, event => {
+      if (/^[a-z]$/.test(event.key)) { window.stolen++; event.preventDefault(); document.querySelector('#host-search').focus(); }
+    });
+    setTimeout(() => {
+      const diff = document.querySelector('#diff');
+      diff.innerHTML = '<tr><td id="line57">const first = alpha();</td></tr><tr><td id="line58"><span hidden>changed metadata</span>const second = beta();</td></tr><tr><td id="line59">const third = gamma();</td></tr>';
+      document.body.dataset.rewritten = '1';
+    }, 6000);
+    </script>`);
   fileUrl = pathToFileURL(path.join(docDir, 'dynamic.html')).href;
   userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'whn-dynamic-profile-'));
   context = await chromium.launchPersistentContext(userDataDir, {
@@ -175,4 +192,69 @@ test('a sanitizer that strips marks does not keep the page busy', async () => {
   const saved = await stored(pageKey(fileUrl));
   expect(saved.highlights).toHaveLength(1);
   expect(saved.highlights[0].text).toBe(STABLE);
+});
+
+async function selectDiff(page) {
+  await page.evaluate(() => {
+    const range = document.createRange();
+    range.setStart(document.querySelector('#line57').firstChild, 6);
+    const end = document.querySelector('#line59').firstChild;
+    range.setEnd(end, end.length);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    document.querySelector('#line59').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+  });
+}
+
+test('comment typing is isolated from document shortcuts, including edit and save', async () => {
+  const page = context.pages()[0];
+  await page.goto(new URL('files.html', fileUrl).href);
+  await expect.poll(() => ready(page)).toBe('1');
+  await selectDiff(page);
+  await page.getByRole('button', { name: '划线+评论', exact: true }).click();
+  const area = page.locator('#whn-root textarea');
+  await area.pressSequentially('alpha beta');
+  await expect(area).toHaveValue('alpha beta');
+  expect(await page.evaluate(() => window.stolen)).toBe(0);
+  await area.press('Control+Enter');
+  await expect.poll(async () => (await stored(pageKey(page.url())))?.highlights[0]?.comment).toBe('alpha beta');
+  await page.locator('#line57 .whn-hl').click();
+  await area.pressSequentially(' edit');
+  await expect(area).toHaveValue('alpha beta edit');
+  expect(await page.evaluate(() => window.stolen)).toBe(0);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/sidepanel.html?tabId=${await tabIdOf(page)}`);
+  await panel.evaluate(() => {
+    window.leakedKeys = 0;
+    for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, () => window.leakedKeys++);
+  });
+  await panel.locator('#summary').pressSequentially('summary');
+  await expect(panel.locator('#summary')).toHaveValue('summary');
+  expect(await panel.evaluate(() => window.leakedKeys)).toBe(0);
+  await panel.close();
+});
+
+test('mid-line cross-row quote survives refresh and a six-second Files rewrite; partial marks are repaired', async () => {
+  const page = context.pages()[0];
+  const url = new URL('files.html', fileUrl).href;
+  await page.goto(url);
+  await expect.poll(() => ready(page)).toBe('1');
+  await selectDiff(page);
+  await page.getByRole('button', { name: '划线', exact: true }).click();
+  const quote = 'first = alpha();const second = beta();const third = gamma();';
+  await expect.poll(async () => (await stored(pageKey(url)))?.highlights[0]?.text).toBe(quote);
+  await page.reload();
+  await expect.poll(() => ready(page)).toBe('1');
+  await expect(page.locator('td .whn-hl')).toHaveCount(3);
+  await expect(page.locator('body')).toHaveAttribute('data-rewritten', '1');
+  await expect(page.locator('td .whn-hl')).toHaveCount(3);
+  await page.locator('#line58').evaluate(el => { el.textContent = 'const second = beta();'; });
+  await expect(page.locator('td .whn-hl')).toHaveCount(3);
+  expect((await stored(pageKey(url))).highlights[0].anchored).toBe(true);
+  await page.locator('#line58').evaluate(el => { el.textContent = 'unrelated replacement'; });
+  await expect.poll(async () => (await stored(pageKey(url)))?.highlights[0]?.anchored).toBe(false);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/sidepanel.html?tabId=${await tabIdOf(page)}`);
+  await expect(panel.locator('.warn')).toContainText('未定位');
+  await panel.close();
 });
