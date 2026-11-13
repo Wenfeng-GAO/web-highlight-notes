@@ -64,9 +64,18 @@ function docOf(root) {
   return root?.ownerDocument || document;
 }
 
+/** The row that owns a cell's text. Null for text that is not in a table cell. */
+function cellRow(node) {
+  const cell = node.parentElement?.closest?.('td, th');
+  return cell?.closest?.('tr') || null;
+}
+
 /**
- * Concatenate text nodes under root. Offsets are UTF-16 code units and line up
- * with the segments array so matches can cross element boundaries.
+ * Concatenate text nodes under root. Offsets are UTF-16 code units.
+ * A single newline is inserted between text in different table rows when the
+ * cells themselves do not already carry that break. The newline is not a
+ * segment: row-gap whitespace stays unwrapped, so painting cannot put a span
+ * between rows. Line numbers and hidden rows never reach this loop.
  */
 export function indexText(root, { hide = false } = {}) {
   const doc = docOf(root);
@@ -82,11 +91,17 @@ export function indexText(root, { hide = false } = {}) {
   });
 
   let node = walker.nextNode();
+  let previousRow = null;
   while (node) {
     const value = node.nodeValue || '';
+    const row = cellRow(node);
+    if (row && previousRow && row !== previousRow && !text.endsWith('\n') && !value.startsWith('\n')) {
+      text += '\n';
+    }
     const start = text.length;
     text += value;
     segments.push({ node, start, end: text.length });
+    previousRow = row;
     node = walker.nextNode();
   }
   return { text, segments };
