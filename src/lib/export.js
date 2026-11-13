@@ -37,11 +37,36 @@ export function toMarkdown({ title, url, date, summary, highlights, labels = DEF
   return `${lines.join('\n')}\n`;
 }
 
+const FILENAME_MAX_UNITS = 80;
+
+/**
+ * At most 80 UTF-16 code units.
+ * Intl.Segmenter keeps a grapheme intact by dropping a cluster that would not fit.
+ * Without Segmenter this only avoids splitting one surrogate pair. Combining marks
+ * and ZWJ sequences can still be cut on that path.
+ */
+function truncateFilename(text) {
+  if (text.length <= FILENAME_MAX_UNITS) return text;
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    let out = '';
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const { segment } of segmenter.segment(text)) {
+      if (out.length + segment.length > FILENAME_MAX_UNITS) break;
+      out += segment;
+    }
+    return out;
+  }
+  let end = FILENAME_MAX_UNITS;
+  const lead = text.charCodeAt(end - 1);
+  const trail = text.charCodeAt(end);
+  if (lead >= 0xD800 && lead <= 0xDBFF && trail >= 0xDC00 && trail <= 0xDFFF) end -= 1;
+  return text.slice(0, end);
+}
+
 export function downloadFilename(title, fallback = DEFAULT_LABELS.defaultName) {
-  const cleaned = String(title || fallback)
+  const cleaned = truncateFilename(String(title || fallback)
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
+    .trim());
   return `${cleaned || fallback}.md`;
 }
