@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = '/opt/cursor/artifacts';
@@ -105,12 +106,7 @@ test('a code selection does not keep the user-select:none line number', async ()
   await expect(panel.locator('.quote')).toContainText('const beta = 2;');
   await expect(panel.locator('.quote')).not.toContainText('2const');
   await expect(panel.locator('#counts')).toHaveText('1 条划线 · 0 条评论');
-  const downloadPromise = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  const download = await downloadPromise;
-  const dest = path.join(os.tmpdir(), `whn-lines-${Date.now()}.md`);
-  await download.saveAs(dest);
-  const markdown = fs.readFileSync(dest, 'utf8');
+  const markdown = await readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
   expect(markdown).toContain('const alpha = 1;');
   expect(markdown).toContain('const beta = 2;');
   expect(markdown).not.toMatch(/^>\s*2\s*$/m);

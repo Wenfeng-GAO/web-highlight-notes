@@ -50,11 +50,20 @@
   "panelLoading": {
     "message": "Loading…"
   },
-  "panelExport": {
-    "message": "Export MD"
+  "panelCopy": {
+    "message": "Copy Markdown"
+  },
+  "panelCopyRetry": {
+    "message": "Try again"
   },
   "panelCopied": {
     "message": "Copied ✓"
+  },
+  "panelCopyUnavailable": {
+    "message": "There is nothing to copy on this page."
+  },
+  "panelCopyFailed": {
+    "message": "Couldn't copy."
   },
   "panelSummaryPlaceholder": {
     "message": "Page summary"
@@ -94,9 +103,6 @@
   },
   "exportComment": {
     "message": "Note: "
-  },
-  "exportDefaultName": {
-    "message": "highlight-notes"
   },
   "countHighlightsOne": {
     "message": "$COUNT$ highlight",

@@ -100,6 +100,30 @@ body {
   cursor: pointer;
 }
 
+#export:disabled {
+  cursor: default;
+}
+
+.export-hint,
+.export-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.export-hint {
+  color: var(--muted);
+}
+
+.export-error {
+  color: var(--warn);
+}
+
+.export-hint[hidden],
+.export-error[hidden] {
+  display: none;
+}
+
 .list {
   list-style: none;
   margin: 0;

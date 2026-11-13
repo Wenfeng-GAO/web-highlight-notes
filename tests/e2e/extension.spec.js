@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
 import { answerPermissionDialog, chromeLocaleEnv } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.join(root, 'artifacts');
@@ -92,13 +93,7 @@ function bubble(target) {
 }
 
 async function exportMarkdown() {
-  const downloadPromise = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  await expect(panel.getByRole('button', { name: '已复制 ✓', exact: true })).toBeVisible();
-  const download = await downloadPromise;
-  const dest = path.join(os.tmpdir(), `whn-export-${Date.now()}.md`);
-  await download.saveAs(dest);
-  return fs.readFileSync(dest, 'utf8');
+  return readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
 }
 
 async function readSummary(key) {
@@ -306,7 +301,7 @@ ${SUMMARY}
 > ${QUOTE_3}
 评论：${COMMENT_3}
 `);
-  await expect(panel.getByRole('button', { name: '导出 MD', exact: true })).toBeVisible({ timeout: 3000 });
+  await expect(panel.getByRole('button', { name: '复制 Markdown', exact: true })).toBeVisible({ timeout: 3000 });
 });
 
 test('keeps a highlight that can no longer be anchored', async () => {

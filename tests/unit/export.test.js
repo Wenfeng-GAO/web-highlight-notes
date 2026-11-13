@@ -75,6 +75,67 @@ describe('formatDate and filename', () => {
   });
 });
 
+describe('markdown format contract', () => {
+  it('matches the published examples, including raw characters and empty sections', () => {
+    const labels = { source: '来源：', summary: '摘要', highlights: '划线', comment: '评论：' };
+    expect(toMarkdown({
+      title: '标题 *不是* 转义',
+      url: 'https://example.com/a?q=1',
+      date: '2026-11-13',
+      summary: '摘要第一行\n摘要第二行，保留 *星号* 与 [链接](https://example.com)。',
+      highlights: [
+        { text: '第一行\n\n第三行 > 原样', comment: '  ' },
+        { text: '引用', comment: '评论一行\n评论第二行' },
+      ],
+      labels,
+    })).toBe(`# 标题 *不是* 转义
+来源：https://example.com/a?q=1 · 2026-11-13
+## 摘要
+摘要第一行
+摘要第二行，保留 *星号* 与 [链接](https://example.com)。
+## 划线
+> 第一行
+> 
+> 第三行 > 原样
+> 引用
+评论：评论一行
+评论第二行
+`);
+    expect(toMarkdown({
+      title: 'Only summary',
+      url: 'https://example.com/s',
+      date: '2026-11-13',
+      summary: '正文摘要',
+      highlights: [],
+      labels,
+    })).toBe('# Only summary\n来源：https://example.com/s · 2026-11-13\n## 摘要\n正文摘要\n## 划线\n');
+    expect(toMarkdown({
+      title: 'Only highlight',
+      url: 'https://example.com/h',
+      date: '2026-11-13',
+      summary: '',
+      highlights: [{ text: '仅划线', comment: '一条评论' }],
+      labels,
+    })).toBe('# Only highlight\n来源：https://example.com/h · 2026-11-13\n## 摘要\n\n## 划线\n> 仅划线\n评论：一条评论\n');
+    expect(toMarkdown({
+      title: 'T',
+      url: 'https://example.com/a',
+      date: '2026-10-15',
+      summary: 'S',
+      highlights: [{ text: 'quote', comment: 'note' }],
+      labels: { source: 'Source: ', summary: 'Summary', highlights: 'Highlights', comment: 'Note: ' },
+    })).toBe('# T\nSource: https://example.com/a · 2026-10-15\n## Summary\nS\n## Highlights\n> quote\nNote: note\n');
+    expect(toMarkdown({
+      title: 'T',
+      url: 'https://example.com/a',
+      date: '2026-01-02',
+      summary: '   ',
+      highlights: [],
+      labels,
+    })).toBe('# T\n来源：https://example.com/a · 2026-01-02\n## 摘要\n   \n## 划线\n');
+  });
+});
+
 describe('toMarkdown labels', () => {
   it('uses the given labels for an English export', () => {
     const markdown = toMarkdown({

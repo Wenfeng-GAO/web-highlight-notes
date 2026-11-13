@@ -50,11 +50,20 @@
   "panelLoading": {
     "message": "加载中…"
   },
-  "panelExport": {
-    "message": "导出 MD"
+  "panelCopy": {
+    "message": "复制 Markdown"
+  },
+  "panelCopyRetry": {
+    "message": "重试"
   },
   "panelCopied": {
     "message": "已复制 ✓"
+  },
+  "panelCopyUnavailable": {
+    "message": "此页面没有可复制的内容。"
+  },
+  "panelCopyFailed": {
+    "message": "未能复制。"
   },
   "panelSummaryPlaceholder": {
     "message": "页面摘要"
@@ -94,9 +103,6 @@
   },
   "exportComment": {
     "message": "评论："
-  },
-  "exportDefaultName": {
-    "message": "划线笔记"
   },
   "countHighlightsOne": {
     "message": "$COUNT$ 条划线",

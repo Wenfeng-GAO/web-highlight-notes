@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = '/opt/cursor/artifacts';
@@ -125,12 +126,7 @@ test('late text is highlighted again and stays anchored, with its comment', asyn
   await expect(panel.locator('.quote')).toHaveText(LATE);
   await expect(panel.locator('.warn')).toHaveCount(0);
   await expect(panel.locator('#counts')).toHaveText('1 条划线 · 1 条评论');
-  const downloadPromise = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  const download = await downloadPromise;
-  const dest = path.join(os.tmpdir(), `whn-late-${Date.now()}.md`);
-  await download.saveAs(dest);
-  const markdown = fs.readFileSync(dest, 'utf8');
+  const markdown = await readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
   expect(markdown).toContain(LATE);
   expect(markdown).toContain('迟到的评论');
   if (fs.existsSync(shots)) await panel.screenshot({ path: path.join(shots, 'after-late-panel.png') });

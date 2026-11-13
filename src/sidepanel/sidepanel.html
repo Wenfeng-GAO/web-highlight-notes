@@ -11,8 +11,10 @@
       <header class="header">
         <div class="header-row">
           <h1 id="title" class="title" data-i18n="panelLoading"></h1>
-          <button id="export" type="button" data-i18n="panelExport"></button>
+          <button id="export" type="button" data-i18n="panelCopy"></button>
         </div>
+        <p id="export-hint" class="export-hint" data-i18n="panelCopyUnavailable" hidden></p>
+        <p id="export-error" class="export-error" role="alert" data-i18n="panelCopyFailed" hidden></p>
         <p id="counts" class="meta"></p>
         <p id="status" class="status" hidden><span data-i18n="panelNeedClick"></span> <a href="#" id="grant" role="button" data-i18n="panelGrant"></a></p>
       </header>

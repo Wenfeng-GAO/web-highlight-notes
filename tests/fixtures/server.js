@@ -18,6 +18,11 @@ export function startFixtureServer() {
       res.end(fs.readFileSync(spaPath));
       return;
     }
+    if (url.pathname === '/paste.html') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end('<!doctype html><meta charset="utf-8"><title>paste target</title><textarea id="paste-target"></textarea>');
+      return;
+    }
     if (url.pathname !== '/article.html') {
       res.statusCode = 404;
       res.end('not found');
@@ -37,6 +42,7 @@ export function startFixtureServer() {
       resolve({
         port,
         url: `http://127.0.0.1:${port}/article.html`,
+        pasteUrl: `http://127.0.0.1:${port}/paste.html`,
         close: () => new Promise((done) => server.close(() => done())),
       });
     });
