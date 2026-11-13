@@ -241,7 +241,7 @@ test('mid-line cross-row quote survives refresh and a six-second Files rewrite; 
   await expect.poll(() => ready(page)).toBe('1');
   await selectDiff(page);
   await page.getByRole('button', { name: '划线', exact: true }).click();
-  const quote = 'first = alpha();const second = beta();const third = gamma();';
+  const quote = 'first = alpha();\nconst second = beta();\nconst third = gamma();';
   await expect.poll(async () => (await stored(pageKey(url)))?.highlights[0]?.text).toBe(quote);
   await page.reload();
   await expect.poll(() => ready(page)).toBe('1');

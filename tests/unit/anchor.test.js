@@ -19,17 +19,39 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 
-it('indexes cross-row code without hidden metadata or table formatting whitespace', () => {
+it('keeps one newline between table rows and drops hidden metadata and gutter cells', () => {
   const root = mount('<table><tbody>\n<tr><td>const first = alpha();</td></tr>\n<tr><td><span style="display:none">metadata</span>const second = beta();</td></tr>\n<tr><td>const third = gamma();</td></tr>\n</tbody></table>');
   const cells = root.querySelectorAll('td');
   const range = document.createRange();
   range.setStart(cells[0].firstChild, 6);
   range.setEnd(cells[2].firstChild, cells[2].firstChild.length);
   const selector = selectorFromRange(root, range);
-  expect(selector.exact).toBe('first = alpha();const second = beta();const third = gamma();');
+  expect(selector.exact).toBe('first = alpha();\nconst second = beta();\nconst third = gamma();');
+  expect(selector.exact).not.toContain('metadata');
   root.innerHTML = '<table><tbody><tr><td>const first = alpha();</td></tr><tr><td><span hidden>different metadata</span>const second = beta();</td></tr><tr><td>const third = gamma();</td></tr></tbody></table>';
-  expect(locateQuote(root, selector)).not.toBeNull();
+  const located = locateQuote(root, selector);
+  expect(located).not.toBeNull();
+  expect(located.range.startContainer.nodeValue).toContain('first = alpha();');
+  expect(located.range.endContainer.nodeValue).toContain('third = gamma();');
   expect(indexText(root).text).toContain('const first = alpha();');
+});
+
+it('does not add a second newline when the cell already ends on one', () => {
+  const root = mount('<table><tr><td>one\n</td></tr><tr><td>two</td></tr></table>');
+  expect(indexText(root, { hide: true }).text).toBe('one\ntwo');
+});
+
+it('keeps a row break without a user-select:none line number', () => {
+  const root = mount('<table><tr><td style="user-select:none">57</td><td id="c">dir tarballs</td></tr><tr><td style="user-select:none">58</td><td id="d">middle</td></tr></table>');
+  const range = document.createRange();
+  const start = root.querySelector('#c').firstChild;
+  const end = root.querySelector('#d').firstChild;
+  range.setStart(start, 4);
+  range.setEnd(end, end.length);
+  const selector = selectorFromRange(root, range);
+  expect(selector.exact).toBe('tarballs\nmiddle');
+  expect(selector.exact).not.toContain('57');
+  expect(selector.exact).not.toContain('58');
 });
 
 describe('findBestMatch', () => {
