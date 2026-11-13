@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { expectOverlay, overlayButton } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shotDir = process.env.WHN_SHOTS || path.join(root, 'test-results', 'svg-reveal-shots');
@@ -72,11 +73,11 @@ async function select(page, css, quote) {
   await page.waitForTimeout(150);
 }
 
-const highlightBtn = (page) => page.getByRole('button', { name: '划线', exact: true });
+const highlightBtn = (page) => overlayButton(page, '划线');
 
 async function highlight(page, css, quote) {
   await select(page, css, quote);
-  await expect(highlightBtn(page), quote).toBeVisible();
+  await expectOverlay(highlightBtn(page), quote).toBeVisible();
   await highlightBtn(page).click();
   await page.waitForTimeout(100);
 }

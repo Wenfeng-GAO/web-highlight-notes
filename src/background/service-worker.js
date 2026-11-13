@@ -1,10 +1,13 @@
-import { isFileUrl, isSitePattern, isSupportedUrl, isUnsupportedPageError, originPattern } from '../lib/url.js';
+import { isPromptHost } from '../lib/prompt-host.js';
+import { isFileUrl, isSitePattern, isSupportedUrl, isUnsupportedPageError, isWebUrl, originPattern } from '../lib/url.js';
 
 // Sites the user granted (or that kept a grant from 0.1.3) get a persistent
 // content script, so highlights restore on load with no click. Other sites run
 // only after a toolbar click (activeTab).
 const SCRIPT_ID = 'whn-auto';
 const DECLINED_KEY = '__whn:declined';
+const CTX_PREFIX = '__whn:ctx:';
+const CTX_TTL_MS = 10 * 60 * 1000;
 const CONTENT_JS = 'src/content/boot.js';
 const CONTENT_CSS = 'src/content/highlight.css';
 
@@ -176,10 +179,89 @@ chrome.permissions.onAdded.addListener(async ({ origins = [] }) => {
 });
 chrome.permissions.onRemoved.addListener(() => syncAutoScripts());
 
+function promptPage(url) {
+  try {
+    const parsed = new URL(url);
+    const expected = new URL(chrome.runtime.getURL('src/prompt/prompt.html'));
+    return parsed.origin === expected.origin && parsed.pathname === expected.pathname;
+  } catch {
+    return false;
+  }
+}
+
+function newCtx() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// The token is bound to the tab the content script ran in and to the host of
+// that frame. The prompt iframe's own URL is an extension URL, so it is never
+// used as the page origin.
+async function readPromptCtx(ctx, sender) {
+  if (!/^[a-f0-9]{32}$/.test(String(ctx || ''))) return null;
+  if (!promptPage(sender?.url || '')) return null;
+  const key = `${CTX_PREFIX}${ctx}`;
+  const stored = await chrome.storage.session.get(key);
+  const rec = stored[key];
+  if (!rec || typeof rec.tabId !== 'number' || sender.tab?.id !== rec.tabId) return null;
+  if (!isPromptHost(rec.pattern) || rec.exp < Date.now()) {
+    await chrome.storage.session.remove(key);
+    return null;
+  }
+  return { key, rec };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'whn:hello') {
     sendResponse({ tabId: sender.tab?.id ?? null });
     return false;
+  }
+  if (message?.type === 'whn:prompt-open') {
+    (async () => {
+      const pageUrl = sender.url || '';
+      const pattern = originPattern(pageUrl);
+      if (!isWebUrl(pageUrl) || typeof sender.tab?.id !== 'number' || !isPromptHost(pattern)) {
+        sendResponse({ ok: false });
+        return;
+      }
+      const ctx = newCtx();
+      await chrome.storage.session.set({
+        [`${CTX_PREFIX}${ctx}`]: { pattern, tabId: sender.tab.id, exp: Date.now() + CTX_TTL_MS },
+      });
+      sendResponse({ ok: true, ctx });
+    })();
+    return true;
+  }
+  if (message?.type === 'whn:prompt-bind') {
+    (async () => {
+      const found = await readPromptCtx(message.ctx, sender);
+      sendResponse(found ? { ok: true, pattern: found.rec.pattern } : { ok: false });
+    })();
+    return true;
+  }
+  if (message?.type === 'whn:prompt-decline') {
+    (async () => {
+      const found = await readPromptCtx(message.ctx, sender);
+      if (!found) {
+        sendResponse({ ok: false });
+        return;
+      }
+      const stored = await chrome.storage.local.get(DECLINED_KEY);
+      const declined = { ...(stored[DECLINED_KEY] || {}), [found.rec.pattern]: Date.now() };
+      await chrome.storage.local.set({ [DECLINED_KEY]: declined });
+      await chrome.storage.session.remove(found.key);
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+  if (message?.type === 'whn:prompt-finish') {
+    (async () => {
+      const found = await readPromptCtx(message.ctx, sender);
+      if (found) await chrome.storage.session.remove(found.key);
+      sendResponse({ ok: !!found });
+    })();
+    return true;
   }
   if (message?.type === 'whn:site') {
     // A content script saved notes. Report the site's grant state and register

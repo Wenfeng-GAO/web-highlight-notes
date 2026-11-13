@@ -7,6 +7,8 @@ import { titleAfterNavigation } from '../lib/title.js';
 import { pageKey } from '../lib/url.js';
 import { mountOverlay } from './overlay.js';
 
+const extensionOrigin = new URL(chrome.runtime.getURL('src/prompt/prompt.html')).origin;
+
 // The storage key. Single-page sites change it with history.pushState; see watchUrl().
 let pageUrl = pageKey(location.href);
 // Title adopted for pageUrl. document.title can lag a single-page navigation (#19).
@@ -281,8 +283,15 @@ async function checkSite(highlightId) {
   }
   document.documentElement.dataset.whnSite = status?.granted ? 'granted' : (status?.declined ? 'declined' : 'ask');
   if (!status?.pattern || status.granted || status.declined || promptShown) return;
+  let opened = null;
+  try {
+    opened = await chrome.runtime.sendMessage({ type: 'whn:prompt-open' });
+  } catch {
+    return;
+  }
+  if (!opened?.ok || !/^[a-f0-9]{32}$/.test(opened.ctx || '')) return;
   promptShown = true;
-  const src = `${chrome.runtime.getURL('src/prompt/prompt.html')}?origin=${encodeURIComponent(status.pattern)}`;
+  const src = `${chrome.runtime.getURL('src/prompt/prompt.html')}?ctx=${encodeURIComponent(opened.ctx)}`;
   promptAnchorId = highlightId;
   const placement = promptPlacement();
   ui.showPrompt(src, placement.anchor, placement.obstacles);
@@ -304,6 +313,7 @@ function placePromptAgain() {
 }
 
 window.addEventListener('message', (event) => {
+  if (event.origin !== extensionOrigin) return;
   if (!ui.promptOpen() || event.source !== ui.prompt.contentWindow || !event.data?.whnPrompt) return;
   if (event.data.type === 'size') {
     ui.setPromptHeight(Number(event.data.height));
@@ -371,6 +381,7 @@ function onMouseMove(event) {
 }
 
 function onClick(event) {
+  if (!event.isTrusted) return;
   if (ui.eventFromHost(event)) return;
   const highlight = closestHighlight(event.target, event);
   if (!highlight) return;
@@ -467,6 +478,7 @@ function scrollToHighlight(id) {
 function bindUi() {
   for (const button of [ui.highlightBtn, ui.commentBtn]) {
     button.addEventListener('mousedown', (event) => {
+      if (!event.isTrusted) return;
       pointerInUi = true;
       event.preventDefault();
       event.stopPropagation();
@@ -474,11 +486,13 @@ function bindUi() {
   }
   for (const button of [ui.saveBtn, ui.deleteBtn]) {
     button.addEventListener('mousedown', (event) => {
+      if (!event.isTrusted) return;
       event.preventDefault();
       event.stopPropagation();
     });
   }
   ui.highlightBtn.addEventListener('click', (event) => {
+    if (!event.isTrusted) return;
     event.preventDefault();
     event.stopPropagation();
     pointerInUi = true;
@@ -487,6 +501,7 @@ function bindUi() {
     });
   });
   ui.commentBtn.addEventListener('click', (event) => {
+    if (!event.isTrusted) return;
     event.preventDefault();
     event.stopPropagation();
     pointerInUi = true;
@@ -495,16 +510,19 @@ function bindUi() {
     });
   });
   ui.saveBtn.addEventListener('click', (event) => {
+    if (!event.isTrusted) return;
     event.preventDefault();
     event.stopPropagation();
     saveBubble();
   });
   ui.deleteBtn.addEventListener('click', (event) => {
+    if (!event.isTrusted) return;
     event.preventDefault();
     event.stopPropagation();
     deleteBubble();
   });
-  ui.textarea.addEventListener('input', () => {
+  ui.textarea.addEventListener('input', (event) => {
+    if (!event.isTrusted) return;
     const highlight = record.highlights.find((item) => item.id === bubbleId);
     if (!highlight) return;
     highlight.draft = ui.textarea.value;
@@ -512,6 +530,7 @@ function bindUi() {
   });
   ui.textarea.addEventListener('keydown', (event) => {
     event.stopPropagation();
+    if (!event.isTrusted) return;
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
       saveBubble();

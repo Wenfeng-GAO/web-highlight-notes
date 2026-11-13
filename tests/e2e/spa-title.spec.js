@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../fixtures/server.js';
 import { answerPermissionDialog, chromeLocaleEnv } from './native.js';
+import { overlayButton } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.join(root, 'artifacts');
@@ -101,7 +102,7 @@ for (const c of CASES) {
       // QA repro: title follows pushState by 800ms. One highlight, then「页面 B」, then 2.5s.
       await page.evaluate(() => { sessionStorage.delay = '800'; });
       await selectParagraph(page);
-      await page.getByRole('button', { name: c.highlight, exact: true }).click();
+      await overlayButton(page, c.highlight).click();
       await expect(page.locator('.whn-hl')).toHaveCount(1);
 
       await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/sidepanel.html?${new URLSearchParams({ tabId, url: page.url(), title: 'SPA /spa/a' })}`);

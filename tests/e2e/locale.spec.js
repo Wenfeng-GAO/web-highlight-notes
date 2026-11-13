@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../fixtures/server.js';
 import { chromeLocaleEnv, clickActionIcon } from './native.js';
+import { expectOverlay, overlayBox, overlayButton, overlayDialog, overlayToolbar, readyPrompt } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -38,22 +39,22 @@ test('English Chrome shows English toolbar, bubble, prompt card, side panel and 
       getSelection().addRange(range);
       document.querySelector('#p2').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
     });
-    await expect(page.getByRole('toolbar', { name: 'Highlight' })).toBeVisible();
-    await page.getByRole('button', { name: 'Highlight + note', exact: true }).click();
-    const bubble = page.getByRole('dialog', { name: 'Highlight note' });
-    await expect(bubble.getByPlaceholder('Write a note')).toBeVisible();
-    await expect(bubble.getByRole('button', { name: 'Delete highlight' })).toBeVisible();
+    await expectOverlay(overlayToolbar(page, 'Highlight')).toBeVisible();
+    await overlayButton(page, 'Highlight + note').click();
+    const bubble = overlayDialog(page, 'Highlight note');
+    await expectOverlay(bubble.getByPlaceholder('Write a note')).toBeVisible();
+    await expectOverlay(bubble.getByRole('button', { name: 'Delete highlight' })).toBeVisible();
     await bubble.getByRole('textbox', { name: 'Note' }).fill('english note');
     await bubble.getByRole('button', { name: 'Save', exact: true }).click();
-    const card = page.frameLocator('#whn-root >> iframe.prompt');
-    await expect(page.locator('#whn-root >> iframe.prompt')).toBeVisible();
+    const card = await readyPrompt(page);
     await page.waitForTimeout(300);
     // With the note bubble open, the card goes below the bubble, covering neither it nor the text.
-    const rects = await page.evaluate(() => {
-      const root = document.querySelector('#whn-root').shadowRoot;
-      const box = (el) => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; };
-      return { card: box(root.querySelector('iframe.prompt')), bubble: box(root.querySelector('.bubble')), text: box(document.querySelector('.whn-hl')) };
-    });
+    const text = await page.locator('.whn-hl').boundingBox();
+    const rects = {
+      card: await overlayBox(page, 'iframe.prompt'),
+      bubble: await overlayBox(page, '.bubble'),
+      text: text ? { top: text.y, bottom: text.y + text.height, left: text.x, right: text.x + text.width } : null,
+    };
     const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     expect(overlaps(rects.card, rects.bubble)).toBe(false);
     expect(overlaps(rects.card, rects.text)).toBe(false);

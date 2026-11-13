@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { expectOverlay, overlayButton, overlayDialog } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shotDir = process.env.WHN_SHOTS || path.join(root, 'test-results', 'svg-shots');
@@ -89,8 +90,8 @@ async function select(page, css, quote) {
   await page.waitForTimeout(150);
 }
 
-const highlightBtn = (page) => page.getByRole('button', { name: '划线', exact: true });
-const bubble = (page) => page.getByRole('dialog', { name: '划线评论' });
+const highlightBtn = (page) => overlayButton(page, '划线');
+const bubble = (page) => overlayDialog(page, '划线评论');
 
 /** Rendered width of an SVG <text>: 0 when its characters are not drawn. */
 const textLength = (page, css) => page.locator(css).first().evaluate((node) => node.getComputedTextLength());
@@ -204,7 +205,7 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
   const widthBefore = await textLength(page, LABEL_TEXT);
 
   await select(page, LABEL_TEXT, LABEL);
-  await expect(highlightBtn(page)).toBeVisible();
+  await expectOverlay(highlightBtn(page)).toBeVisible();
   await highlightBtn(page).click();
   const mark = page.locator('svg[aria-label="热更新时序"] rect.whn-svg-hl');
   await expect(mark).toHaveCount(1);
@@ -235,10 +236,10 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
 
   // Acceptance 2: clicking the label opens the bubble and takes a comment.
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(bubble(page)).toBeVisible();
+  await expectOverlay(bubble(page)).toBeVisible();
   await bubble(page).getByRole('textbox', { name: '评论' }).fill(COMMENT);
   await bubble(page).getByRole('button', { name: '保存', exact: true }).click();
-  await expect(bubble(page)).toBeHidden();
+  await expectOverlay(bubble(page)).toBeHidden();
   const dot = page.locator('svg[aria-label="热更新时序"] circle.whn-svg-dot');
   await expect(dot).toHaveCount(1);
   expect(await dot.evaluate((circle) => ({ r: circle.getAttribute('r'), fill: getComputedStyle(circle).fill }))).toEqual({ r: '3', fill: 'rgb(202, 138, 4)' });
@@ -259,7 +260,7 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
   expect(await page.locator(LABEL_TEXT).evaluate((node) => node.outerHTML)).toBe(LABEL_HTML);
   expect((await stored(key)).highlights[0].anchored).toBe(true);
   await page.locator(LABEL_TEXT).click();
-  await expect(bubble(page).getByRole('textbox', { name: '评论' })).toHaveValue(COMMENT);
+  await expectOverlay(bubble(page).getByRole('textbox', { name: '评论' })).toHaveValue(COMMENT);
   await page.screenshot({ path: path.join(shotDir, 'b-bubble-on-svg-label.png') });
   await page.keyboard.press('Escape');
 
@@ -267,7 +268,7 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
   const sentence = 'svg[aria-label="失败场景"] text:has(tspan)';
   const sentenceBefore = await page.locator(sentence).evaluate((node) => node.outerHTML);
   await select(page, `${sentence} tspan`, '存疑');
-  await expect(highlightBtn(page)).toBeVisible();
+  await expectOverlay(highlightBtn(page)).toBeVisible();
   await highlightBtn(page).click();
   await expect(page.locator('svg[aria-label="失败场景"] rect.whn-svg-hl')).toHaveCount(1);
   expect(await page.locator(sentence).evaluate((node) => node.outerHTML)).toBe(sentenceBefore);
@@ -304,7 +305,7 @@ test('sweep: textPath, per-glyph rotate and MathML get no toolbar; a transform o
     ['#emc', 'E'],
   ]) {
     await select(page, css, quote);
-    await expect(highlightBtn(page), `${css} ${quote}`).toBeHidden();
+    await expectOverlay(highlightBtn(page), `${css} ${quote}`).toBeHidden();
   }
   // A selection that runs from HTML into MathML is refused as a whole.
   await page.evaluate(() => {
@@ -316,14 +317,14 @@ test('sweep: textPath, per-glyph rotate and MathML get no toolbar; a transform o
     document.querySelector('#formula').dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
   });
   await page.waitForTimeout(150);
-  await expect(highlightBtn(page)).toBeHidden();
+  await expectOverlay(highlightBtn(page)).toBeHidden();
   expect(await snapshot()).toEqual(pristine);
 
   // Native marks where placement is exact: nested transforms, the text's own translate,
   // and the text's own rotate (same glyphs as a parent <g> rotate; #20).
   for (const [css, quote] of [['#moved', '平移缩放'], ['#shifted', '自带平移'], ['#plain', '平面框标签'], ['#turned', '旋转的']]) {
     await select(page, css, quote);
-    await expect(highlightBtn(page), css).toBeVisible();
+    await expectOverlay(highlightBtn(page), css).toBeVisible();
     await highlightBtn(page).click();
     const placed = await page.locator(css).evaluate((text, q) => {
       const rect = text.previousElementSibling;
@@ -344,7 +345,7 @@ test('sweep: textPath, per-glyph rotate and MathML get no toolbar; a transform o
   }
   // <foreignObject> holds HTML, so the ordinary span works there.
   await select(page, '#fo', '网页段落');
-  await expect(highlightBtn(page)).toBeVisible();
+  await expectOverlay(highlightBtn(page)).toBeVisible();
   await highlightBtn(page).click();
   await expect(page.locator('#fo span.whn-hl')).toHaveText('网页段落');
   await expect.poll(async () => (await stored(key))?.highlights?.length).toBe(5);

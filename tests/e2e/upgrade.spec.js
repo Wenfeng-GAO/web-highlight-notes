@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
 import { chromeLocaleEnv } from './native.js';
+import { overlayButton } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const QUOTE_1 = '春天的花园里开满了黄色的花';
@@ -94,7 +95,7 @@ test('upgrade from 0.1.3 keeps notes, the site grant, auto-restore, side panel a
         return;
       }
     }, { css: selector, text: quote });
-    await page.getByRole('button', { name: '划线', exact: true }).click();
+    await overlayButton(page, '划线').click();
     await expect(page.locator('.whn-hl', { hasText: quote })).toHaveCount(1);
   }
   await worker.evaluate(async ({ k, summary, quote, comment }) => {
