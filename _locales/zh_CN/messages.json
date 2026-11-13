@@ -56,6 +56,15 @@
   "panelCopied": {
     "message": "已复制 ✓"
   },
+  "panelDownloadStarted": {
+    "message": "已发起下载"
+  },
+  "panelExportUnavailable": {
+    "message": "此页面暂时不能导出。"
+  },
+  "panelExportFailed": {
+    "message": "未能复制，也没有发起下载。"
+  },
   "panelSummaryPlaceholder": {
     "message": "页面摘要"
   },

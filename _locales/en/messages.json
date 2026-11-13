@@ -56,6 +56,15 @@
   "panelCopied": {
     "message": "Copied ✓"
   },
+  "panelDownloadStarted": {
+    "message": "Download started"
+  },
+  "panelExportUnavailable": {
+    "message": "Export is unavailable on this page."
+  },
+  "panelExportFailed": {
+    "message": "Couldn't copy or start a download."
+  },
   "panelSummaryPlaceholder": {
     "message": "Page summary"
   },

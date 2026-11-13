@@ -10,6 +10,11 @@ const summaryEl = document.querySelector('#summary');
 const titleEl = document.querySelector('#title');
 const countsEl = document.querySelector('#counts');
 const exportBtn = document.querySelector('#export');
+const exportHintEl = document.querySelector('#export-hint');
+const exportErrorEl = document.querySelector('#export-error');
+// No record yet. Stay quiet until showEmpty explains it, or a page enables it.
+exportBtn.disabled = true;
+exportBtn.setAttribute('aria-disabled', 'true');
 const listEl = document.querySelector('#list');
 const statusEl = document.querySelector('#status');
 const appEl = document.querySelector('.app');
@@ -199,6 +204,7 @@ function render({ urlChanged = false } = {}) {
   titleEl.textContent = title;
   const highlights = record?.highlights || [];
   countsEl.textContent = countsText(highlights);
+  setExportAvailable({ resetStatus: urlChanged });
   updateStatus();
   const nextSummary = record?.summary || '';
   const focused = isEditingSummary();
@@ -284,47 +290,137 @@ async function copyText(text) {
   }
 }
 
-function downloadMarkdown(filename, text) {
-  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+function describedExport() {
+  const ids = [];
+  if (!exportHintEl.hidden) ids.push(exportHintEl.id);
+  if (!exportErrorEl.hidden) ids.push(exportErrorEl.id);
+  if (ids.length) exportBtn.setAttribute('aria-describedby', ids.join(' '));
+  else exportBtn.removeAttribute('aria-describedby');
 }
 
-function showCopied() {
-  exportBtn.textContent = t('panelCopied');
+function resetExportLabel() {
+  clearTimeout(copiedTimer);
+  copiedTimer = 0;
+  exportBtn.textContent = t('panelExport');
+}
+
+function setExportUnavailable() {
+  resetExportLabel();
+  exportBtn.disabled = true;
+  exportBtn.setAttribute('aria-disabled', 'true');
+  exportHintEl.hidden = false;
+  exportErrorEl.hidden = true;
+  describedExport();
+}
+
+function setExportAvailable({ resetStatus = false } = {}) {
+  exportBtn.disabled = false;
+  exportBtn.setAttribute('aria-disabled', 'false');
+  exportHintEl.hidden = true;
+  if (resetStatus) {
+    resetExportLabel();
+    exportErrorEl.hidden = true;
+  }
+  describedExport();
+}
+
+function showExportResult(message) {
+  exportErrorEl.hidden = true;
+  exportBtn.textContent = message;
   clearTimeout(copiedTimer);
   copiedTimer = setTimeout(() => {
+    copiedTimer = 0;
     exportBtn.textContent = t('panelExport');
   }, 1500);
+  describedExport();
+}
+
+function showExportFailure() {
+  resetExportLabel();
+  exportErrorEl.hidden = false;
+  describedExport();
+}
+
+// True only after the browser is asked to start the download. A click is not a saved file.
+function downloadMarkdown(filename, text) {
+  let url = '';
+  let link = null;
+  try {
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    url = URL.createObjectURL(blob);
+    link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    link?.remove();
+    if (url) {
+      const revokeUrl = url;
+      setTimeout(() => URL.revokeObjectURL(revokeUrl), 1500);
+    }
+  }
 }
 
 async function onExport() {
-  if (!record) return;
-  await flushSummarySave();
-  if (!record.title) record.title = tabTitle || t('panelUntitled');
-  await persist();
-  const markdown = toMarkdown({
-    labels: {
-      source: t('exportSource'),
-      summary: t('exportSummary'),
-      highlights: t('exportHighlights'),
-      comment: t('exportComment'),
-    },
-    title: record.title,
-    url: record.url,
-    date: formatDate(new Date()),
-    summary: record.summary || '',
-    highlights: sortHighlights(record.highlights || []),
-  });
-  await copyText(markdown);
-  downloadMarkdown(downloadFilename(record.title, t('exportDefaultName')), markdown);
-  showCopied();
+  if (!record) {
+    setExportUnavailable();
+    return;
+  }
+  exportErrorEl.hidden = true;
+  describedExport();
+  try {
+    await flushSummarySave();
+    if (!record?.url) {
+      setExportUnavailable();
+      return;
+    }
+    if (!record.title) record.title = tabTitle || t('panelUntitled');
+    await persist();
+    const markdown = toMarkdown({
+      labels: {
+        source: t('exportSource'),
+        summary: t('exportSummary'),
+        highlights: t('exportHighlights'),
+        comment: t('exportComment'),
+      },
+      title: record.title,
+      url: record.url,
+      date: formatDate(new Date()),
+      summary: record.summary || '',
+      highlights: sortHighlights(record.highlights || []),
+    });
+    let copied = false;
+    try {
+      copied = (await copyText(markdown)) === true;
+    } catch {
+      copied = false;
+    }
+    if (!record) {
+      setExportUnavailable();
+      return;
+    }
+    let started = false;
+    try {
+      started = downloadMarkdown(downloadFilename(record.title, t('exportDefaultName')), markdown) === true;
+    } catch {
+      started = false;
+    }
+    if (!record) {
+      setExportUnavailable();
+      return;
+    }
+    if (copied) showExportResult(t('panelCopied'));
+    else if (started) showExportResult(t('panelDownloadStarted'));
+    else showExportFailure();
+  } catch (error) {
+    console.error(error);
+    if (!record) setExportUnavailable();
+    else showExportFailure();
+  }
 }
 
 function applyStorageRecord(next, { urlChanged = false } = {}) {
@@ -469,6 +565,7 @@ function showEmpty(message = t('panelEmpty'), title = t('panelNoPage'), mode = '
   empty.textContent = message;
   listEl.appendChild(empty);
   updateStatus();
+  setExportUnavailable();
 }
 
 function setMode(mode) {
@@ -588,7 +685,11 @@ function bindPanelEvents() {
     flushSummarySave();
   });
   exportBtn.addEventListener('click', () => {
-    onExport();
+    onExport().catch((error) => {
+      console.error(error);
+      if (!record) setExportUnavailable();
+      else showExportFailure();
+    });
   });
 }
 
@@ -620,6 +721,8 @@ async function main() {
 main().catch((error) => {
   console.error(error);
   titleEl.textContent = t('panelLoadFailed');
+  record = null;
+  setExportUnavailable();
 });
 
 // Includes dynamically created comment editors as well as search and summary.
