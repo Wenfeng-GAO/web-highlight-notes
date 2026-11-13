@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
 import { chromeLocaleEnv } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const QUOTE_1 = '春天的花园里开满了黄色的花';
@@ -159,12 +160,7 @@ test('upgrade from 0.1.3 keeps notes, the site grant, auto-restore, side panel a
   await expect(panel.locator('.quote').nth(0)).toHaveText(QUOTE_1);
   await expect(panel.locator('.quote').nth(1)).toHaveText(QUOTE_2);
   await expect(panel.locator('#status')).toBeHidden();
-  const downloadPromise = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  const download = await downloadPromise;
-  const file = path.join(os.tmpdir(), `whn-upgrade-${Date.now()}.md`);
-  await download.saveAs(file);
-  const markdown = fs.readFileSync(file, 'utf8');
+  const markdown = await readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
   expect(markdown).toContain(`> ${QUOTE_1}`);
   expect(markdown).toContain(`> ${QUOTE_2}\n评论：${COMMENT_2}`);
   expect(markdown).toContain(`## 摘要\n${SUMMARY}`);

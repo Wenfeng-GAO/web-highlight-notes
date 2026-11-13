@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../fixtures/server.js';
 import { chromeLocaleEnv, clickActionIcon } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -66,12 +67,7 @@ test('English Chrome shows English toolbar, bubble, prompt card, side panel and 
     await expect(panel.locator('#counts')).toHaveText('1 highlight · 1 note');
     await expect(panel.locator('#status')).toHaveText('On this site, click the extension icon to show highlights Allow');
     await expect(panel.locator('#summary')).toHaveAttribute('placeholder', 'Page summary');
-    const downloadPromise = panel.waitForEvent('download');
-    await panel.getByRole('button', { name: 'Export MD', exact: true }).click();
-    await expect(panel.getByRole('button', { name: 'Copied ✓', exact: true })).toBeVisible();
-    const file = path.join(os.tmpdir(), `whn-en-${Date.now()}.md`);
-    await (await downloadPromise).saveAs(file);
-    const markdown = fs.readFileSync(file, 'utf8');
+    const markdown = await readCopiedMarkdown(panel, { button: 'Copy Markdown', copied: 'Copied ✓' });
     expect(markdown).toMatch(/^# .+\nSource: http:\/\/en\.test:\d+\/article\.html · \d{4}-\d{2}-\d{2}\n## Summary\n\n## Highlights\n> /);
     expect(markdown).toContain('Note: english note');
   } finally {

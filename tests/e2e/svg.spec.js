@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shotDir = process.env.WHN_SHOTS || path.join(root, 'test-results', 'svg-shots');
@@ -114,11 +115,7 @@ async function openPanel(page) {
 }
 
 async function exportMarkdown(panel) {
-  const download = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  const file = path.join(os.tmpdir(), `whn-svg-export-${Date.now()}.md`);
-  await (await download).saveAs(file);
-  return fs.readFileSync(file, 'utf8');
+  return readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
 }
 
 test.describe.configure({ mode: 'serial' });

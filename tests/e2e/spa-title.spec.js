@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../fixtures/server.js';
 import { answerPermissionDialog, chromeLocaleEnv } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.join(root, 'artifacts');
@@ -18,7 +19,7 @@ const CASES = [
     locale: 'zh_CN',
     lang: 'zh-CN',
     highlight: '划线',
-    exportLabel: '导出 MD',
+    exportLabel: '复制 Markdown',
     copied: '已复制 ✓',
     counts0: '0 条划线 · 0 条评论',
     counts1: '1 条划线 · 0 条评论',
@@ -29,7 +30,7 @@ const CASES = [
     locale: 'en_US',
     lang: 'en-US',
     highlight: 'Highlight',
-    exportLabel: 'Export MD',
+    exportLabel: 'Copy Markdown',
     copied: 'Copied ✓',
     counts0: '0 highlights · 0 notes',
     counts1: '1 highlight · 0 notes',
@@ -120,12 +121,7 @@ for (const c of CASES) {
       await panel.bringToFront();
       await panel.screenshot({ path: path.join(artifacts, `spa-title-page-b-${c.tag}.png`) });
 
-      const downloadPromise = panel.waitForEvent('download');
-      await panel.getByRole('button', { name: c.exportLabel, exact: true }).click();
-      await expect(panel.getByRole('button', { name: c.copied, exact: true })).toBeVisible();
-      const dest = path.join(os.tmpdir(), `whn-spa-title-${c.tag}-${Date.now()}.md`);
-      await (await downloadPromise).saveAs(dest);
-      const markdown = fs.readFileSync(dest, 'utf8');
+      const markdown = await readCopiedMarkdown(panel, { button: c.exportLabel, copied: c.copied });
       expect(markdown.startsWith('# SPA /spa/b\n')).toBe(true);
       expect(markdown).toContain(`${c.source}${origin}/spa/b`);
 

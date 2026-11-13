@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
 import { answerPermissionDialog, chromeLocaleEnv, clickActionIcon } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = process.env.WHN_SHOTS || '';
@@ -238,12 +239,8 @@ test('declined site: highlight saved, listed with 「此网站需点击插件图
     await panel.setViewportSize({ width: 1280, height: 800 });
   }
 
-  const downloadPromise = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  const download = await downloadPromise;
-  const file = path.join(os.tmpdir(), `whn-declined-${Date.now()}.md`);
-  await download.saveAs(file);
-  expect(fs.readFileSync(file, 'utf8')).toContain(`> ${QUOTE_1}`);
+  const markdown = await readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
+  expect(markdown).toContain(`> ${QUOTE_1}`);
 
   // Reload: not granted, so nothing shows until the user clicks the icon.
   await page.reload();

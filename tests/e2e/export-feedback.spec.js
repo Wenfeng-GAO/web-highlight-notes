@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../fixtures/server.js';
 import { chromeLocaleEnv } from './native.js';
+import { armCopyWatch, assertNoDownload } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shotDir = process.env.WHN_EXPORT_SHOTS || '/opt/cursor/artifacts/export-feedback';
@@ -16,11 +17,11 @@ const COPY = {
   zh: {
     locale: 'zh_CN',
     lang: 'zh-CN',
-    exportLabel: '导出 MD',
+    copyLabel: '复制 Markdown',
     copied: '已复制 ✓',
-    started: '已发起下载',
-    unavailable: '此页面暂时不能导出。',
-    failed: '未能复制，也没有发起下载。',
+    retry: '重试',
+    unavailable: '此页面没有可复制的内容。',
+    failed: '未能复制。',
     clickToUse: '点击插件图标，在此页面使用划线笔记',
     untitled: '未命名页面',
     panelEmpty: '选中文字即可划线',
@@ -29,11 +30,11 @@ const COPY = {
   en: {
     locale: 'en_US',
     lang: 'en-US',
-    exportLabel: 'Export MD',
+    copyLabel: 'Copy Markdown',
     copied: 'Copied ✓',
-    started: 'Download started',
-    unavailable: 'Export is unavailable on this page.',
-    failed: "Couldn't copy or start a download.",
+    retry: 'Try again',
+    unavailable: 'There is nothing to copy on this page.',
+    failed: "Couldn't copy.",
     clickToUse: 'Click the extension icon to use highlight notes on this page',
     untitled: 'Untitled page',
     panelEmpty: 'Select text to highlight',
@@ -64,6 +65,8 @@ async function labelFixture(panel, name) {
 
 async function installClipboard(panel, mode) {
   await panel.evaluate((kind) => {
+    const anchorSpy = HTMLAnchorElement.prototype.click;
+    const createObjectURL = URL.createObjectURL;
     document.documentElement.dataset.clipboardText = '';
     document.documentElement.dataset.clipboardResult = '';
     window.__whnUnhandled = 0;
@@ -80,6 +83,12 @@ async function installClipboard(panel, mode) {
       return Promise.reject(new Error('clipboard denied'));
     };
     if (kind !== 'resolve') document.execCommand = () => false;
+    if (HTMLAnchorElement.prototype.click !== anchorSpy) {
+      throw new Error('installClipboard replaced the anchor download watcher');
+    }
+    if (URL.createObjectURL !== createObjectURL) {
+      throw new Error('installClipboard replaced the createObjectURL watcher');
+    }
   }, mode);
 }
 
@@ -154,13 +163,13 @@ for (const [tag, copy] of Object.entries(COPY)) {
       await expect(exportBtn).toBeVisible();
       await expect(exportBtn).toBeDisabled();
       await expect(exportBtn).toHaveAttribute('aria-disabled', 'true');
-      await expect(exportBtn).toHaveText(copy.exportLabel);
+      await expect(exportBtn).toHaveText(copy.copyLabel);
       const hint = panel.locator('#export-hint');
       await expect(hint).toBeVisible();
       await expect(hint).toHaveText(copy.unavailable);
       await expect(panel.locator('#export-error')).toBeHidden();
       await exportBtn.click({ force: true });
-      await expect(exportBtn).toHaveText(copy.exportLabel);
+      await expect(exportBtn).toHaveText(copy.copyLabel);
       await expect(exportBtn).not.toHaveText(copy.copied);
       await labelFixture(panel, `${tag}-empty`);
     });
@@ -177,84 +186,92 @@ for (const [tag, copy] of Object.entries(COPY)) {
       const exportBtn = panel.locator('#export');
       await expect(exportBtn).toBeEnabled();
       await expect(exportBtn).toHaveAttribute('aria-disabled', 'false');
-      await expect(exportBtn).toHaveText(copy.exportLabel);
+      await expect(exportBtn).toHaveText(copy.copyLabel);
       await expect(panel.locator('#export-hint')).toHaveCount(1);
       await expect(panel.locator('#export-hint')).toBeHidden();
       await expect(panel.locator('#export-error')).toBeHidden();
     });
 
-    test('fulfilled clipboard shows Copied and does not claim the file was saved', async () => {
+    test('fulfilled clipboard stub shows Copied and no download', async () => {
       const pageUrl = `${fixture.url}?case=success-${tag}`;
       const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Known page' }));
       await expect(panel.locator('#title')).toHaveText('Known page');
       await expect(panel.locator('#export')).toBeEnabled();
+      await expect(panel.locator('#export')).toHaveText(copy.copyLabel);
       await installClipboard(panel, 'resolve');
-      const downloadPromise = panel.waitForEvent('download');
+      const downloads = await armCopyWatch(panel);
       await panel.locator('#export').click();
       await expect(panel.locator('#export')).toHaveText(copy.copied);
       const label = await panel.locator('#export').innerText();
       assertNotSavedClaim(label);
       await expect(panel.locator('#export-error')).toBeHidden();
+      // Stub argument only. The clipboard fact is the Ctrl+V DOM value in export-copy-native.spec.js.
       const written = await panel.evaluate(() => document.documentElement.dataset.clipboardText || '');
       expect(written).toContain('# Known page');
       expect(written).toContain(copy.source);
       expect(written).toContain(pageUrl);
-      const download = await downloadPromise;
-      expect(download.suggestedFilename()).toMatch(/\.md$/);
-      await download.cancel();
+      await assertNoDownload(panel, downloads);
       expect(await panel.evaluate(() => window.__whnUnhandled || 0)).toBe(0);
       await labelFixture(panel, `${tag}-success`);
     });
 
-    test('rejected clipboard with a real download start says download started', async () => {
-      const panel = await openPanel(new URLSearchParams({ url: `${fixture.url}?case=download-${tag}`, title: 'Download page' }));
-      await expect(panel.locator('#title')).toHaveText('Download page');
+    test('rejected clipboard stays visible with no download, then the stub retry shows Copied', async () => {
+      const pageUrl = `${fixture.url}?case=retry-${tag}`;
+      const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Retry page' }));
+      await expect(panel.locator('#title')).toHaveText('Retry page');
       await installClipboard(panel, 'reject');
-      const downloadPromise = panel.waitForEvent('download');
-      await panel.locator('#export').click();
-      await expect(panel.locator('#export')).not.toHaveText(copy.exportLabel, { timeout: 3000 });
-      const label = await panel.locator('#export').innerText();
-      expect(label).toBe(copy.started);
-      expect(label).not.toBe(copy.copied);
-      assertNotSavedClaim(label);
-      await expect(panel.locator('#export-error')).toBeHidden();
-      const download = await downloadPromise;
-      expect(download.suggestedFilename()).toMatch(/\.md$/);
-      await download.cancel();
-      expect(await panel.evaluate(() => document.documentElement.dataset.clipboardResult)).toBe('reject');
-      expect(await panel.evaluate(() => window.__whnUnhandled || 0)).toBe(0);
-      await labelFixture(panel, `${tag}-download-started`);
-    });
-
-    test('copy and download both failing keep the action label and a persistent error', async () => {
-      const panel = await openPanel(new URLSearchParams({ url: `${fixture.url}?case=blocked-${tag}`, title: 'Blocked page' }));
-      await expect(panel.locator('#title')).toHaveText('Blocked page');
-      await installClipboard(panel, 'reject');
-      await panel.evaluate(() => {
-        HTMLAnchorElement.prototype.click = function () {
-          throw new Error('download blocked');
-        };
-      });
-      let sawDownload = false;
-      panel.on('download', () => {
-        sawDownload = true;
-      });
+      const downloads = await armCopyWatch(panel);
       const errors = [];
       panel.on('pageerror', (error) => errors.push(error.message));
       await panel.locator('#export').click();
+      await assertNoDownload(panel, downloads);
       const exportBtn = panel.locator('#export');
-      await expect(exportBtn).toHaveText(copy.exportLabel);
+      await expect(exportBtn).toHaveText(copy.retry);
+      await expect(exportBtn).toBeEnabled();
       await expect(exportBtn).not.toHaveText(copy.copied);
-      await expect(exportBtn).not.toHaveText(copy.started);
       const error = panel.locator('#export-error');
       await expect(error).toBeVisible();
       await expect(error).toHaveText(copy.failed);
       assertNotSavedClaim(await error.innerText());
       await labelFixture(panel, `${tag}-failure`);
       await panel.waitForTimeout(1700);
-      await expect(exportBtn).toHaveText(copy.exportLabel);
+      await expect(exportBtn).toHaveText(copy.retry);
       await expect(error).toBeVisible();
-      expect(sawDownload).toBe(false);
+      expect(await panel.evaluate(() => document.documentElement.dataset.clipboardResult)).toBe('reject');
+      expect(errors).toEqual([]);
+      expect(await panel.evaluate(() => window.__whnUnhandled || 0)).toBe(0);
+
+      await installClipboard(panel, 'resolve');
+      await exportBtn.click();
+      await expect(exportBtn).toHaveText(copy.copied);
+      await expect(error).toBeHidden();
+      // Stub argument only. The clipboard fact is the Ctrl+V DOM value in export-copy-native.spec.js.
+      const written = await panel.evaluate(() => document.documentElement.dataset.clipboardText || '');
+      expect(written).toContain('# Retry page');
+      expect(written).toContain(copy.source);
+      expect(written).toContain(pageUrl);
+      await assertNoDownload(panel, downloads);
+      await labelFixture(panel, `${tag}-retry`);
+    });
+
+    test('a failed copy stays visible until another page restores the action', async () => {
+      const panel = await openPanel(new URLSearchParams({ url: `${fixture.url}?case=blocked-${tag}`, title: 'Blocked page' }));
+      await expect(panel.locator('#title')).toHaveText('Blocked page');
+      await installClipboard(panel, 'reject');
+      const downloads = await armCopyWatch(panel);
+      const errors = [];
+      panel.on('pageerror', (error) => errors.push(error.message));
+      await panel.locator('#export').click();
+      await assertNoDownload(panel, downloads);
+      const exportBtn = panel.locator('#export');
+      await expect(exportBtn).toHaveText(copy.retry);
+      await expect(exportBtn).not.toHaveText(copy.copied);
+      const error = panel.locator('#export-error');
+      await expect(error).toBeVisible();
+      await expect(error).toHaveText(copy.failed);
+      await panel.waitForTimeout(1700);
+      await expect(exportBtn).toHaveText(copy.retry);
+      await expect(error).toBeVisible();
       expect(errors).toEqual([]);
       expect(await panel.evaluate(() => window.__whnUnhandled || 0)).toBe(0);
 
@@ -262,10 +279,11 @@ for (const [tag, copy] of Object.entries(COPY)) {
       await other.goto(otherFileUrl);
       await expect(panel.locator('#title')).toHaveText('Other note');
       await expect(panel.locator('#export')).toBeEnabled();
-      await expect(panel.locator('#export')).toHaveText(copy.exportLabel);
+      await expect(panel.locator('#export')).toHaveText(copy.copyLabel);
       await expect(panel.locator('#export')).toHaveAttribute('aria-disabled', 'false');
       await expect(panel.locator('#export-error')).toBeHidden();
       await expect(panel.locator('#export-hint')).toBeHidden();
+      await assertNoDownload(panel, downloads);
     });
 
     test('a rejected save promise does not claim success', async () => {
@@ -283,12 +301,14 @@ for (const [tag, copy] of Object.entries(COPY)) {
         };
         chrome.storage.local.set = () => Promise.reject(new Error('storage down'));
       });
+      const downloads = await armCopyWatch(panel);
       await panel.locator('#export').click();
-      await expect(panel.locator('#export')).toHaveText(copy.exportLabel);
+      await expect(panel.locator('#export')).toHaveText(copy.retry);
       await expect(panel.locator('#export')).not.toHaveText(copy.copied);
       await expect(panel.locator('#export-error')).toBeVisible();
       await expect(panel.locator('#export-error')).toHaveText(copy.failed);
       expect(await panel.evaluate(() => document.documentElement.dataset.clipboardText || '')).toBe('');
+      await assertNoDownload(panel, downloads);
       expect(await panel.evaluate(() => window.__whnUnhandled || 0)).toBe(0);
     });
   });

@@ -1,4 +1,4 @@
-import { downloadFilename, formatDate, toMarkdown } from '../lib/export.js';
+import { formatDate, toMarkdown } from '../lib/export.js';
 import { commentCount, emptyRecord, sortHighlights, toStoredRecord } from '../lib/model.js';
 import { t, localize } from '../lib/i18n.js';
 import { isFileUrl, isSupportedUrl, isUnsupportedPageError, originPattern, pageKey } from '../lib/url.js';
@@ -301,7 +301,7 @@ function describedExport() {
 function resetExportLabel() {
   clearTimeout(copiedTimer);
   copiedTimer = 0;
-  exportBtn.textContent = t('panelExport');
+  exportBtn.textContent = t('panelCopy');
 }
 
 function setExportUnavailable() {
@@ -326,43 +326,25 @@ function setExportAvailable({ resetStatus = false } = {}) {
 
 function showExportResult(message) {
   exportErrorEl.hidden = true;
+  exportBtn.disabled = false;
+  exportBtn.setAttribute('aria-disabled', 'false');
   exportBtn.textContent = message;
   clearTimeout(copiedTimer);
   copiedTimer = setTimeout(() => {
     copiedTimer = 0;
-    exportBtn.textContent = t('panelExport');
+    exportBtn.textContent = t('panelCopy');
   }, 1500);
   describedExport();
 }
 
 function showExportFailure() {
-  resetExportLabel();
+  clearTimeout(copiedTimer);
+  copiedTimer = 0;
+  exportBtn.disabled = false;
+  exportBtn.setAttribute('aria-disabled', 'false');
+  exportBtn.textContent = t('panelCopyRetry');
   exportErrorEl.hidden = false;
   describedExport();
-}
-
-// True only after the browser is asked to start the download. A click is not a saved file.
-function downloadMarkdown(filename, text) {
-  let url = '';
-  let link = null;
-  try {
-    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-    url = URL.createObjectURL(blob);
-    link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    return true;
-  } catch {
-    return false;
-  } finally {
-    link?.remove();
-    if (url) {
-      const revokeUrl = url;
-      setTimeout(() => URL.revokeObjectURL(revokeUrl), 1500);
-    }
-  }
 }
 
 async function onExport() {
@@ -403,18 +385,7 @@ async function onExport() {
       setExportUnavailable();
       return;
     }
-    let started = false;
-    try {
-      started = downloadMarkdown(downloadFilename(record.title, t('exportDefaultName')), markdown) === true;
-    } catch {
-      started = false;
-    }
-    if (!record) {
-      setExportUnavailable();
-      return;
-    }
     if (copied) showExportResult(t('panelCopied'));
-    else if (started) showExportResult(t('panelDownloadStarted'));
     else showExportFailure();
   } catch (error) {
     console.error(error);

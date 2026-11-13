@@ -50,20 +50,20 @@
   "panelLoading": {
     "message": "Loading…"
   },
-  "panelExport": {
-    "message": "Export MD"
+  "panelCopy": {
+    "message": "Copy Markdown"
+  },
+  "panelCopyRetry": {
+    "message": "Try again"
   },
   "panelCopied": {
     "message": "Copied ✓"
   },
-  "panelDownloadStarted": {
-    "message": "Download started"
+  "panelCopyUnavailable": {
+    "message": "There is nothing to copy on this page."
   },
-  "panelExportUnavailable": {
-    "message": "Export is unavailable on this page."
-  },
-  "panelExportFailed": {
-    "message": "Couldn't copy or start a download."
+  "panelCopyFailed": {
+    "message": "Couldn't copy."
   },
   "panelSummaryPlaceholder": {
     "message": "Page summary"
@@ -103,9 +103,6 @@
   },
   "exportComment": {
     "message": "Note: "
-  },
-  "exportDefaultName": {
-    "message": "highlight-notes"
   },
   "countHighlightsOne": {
     "message": "$COUNT$ highlight",

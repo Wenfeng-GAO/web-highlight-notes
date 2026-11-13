@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv, clickActionIcon, setFileAccess } from './native.js';
+import { readCopiedMarkdown } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = process.env.WHN_SHOTS || '';
@@ -151,11 +152,7 @@ test('file access on: a local file works with no click; the side panel shows its
     await panel.screenshot({ path: path.join(shots, 'sidepanel-file.png') });
     await panel.setViewportSize({ width: 1280, height: 800 });
   }
-  const downloadPromise = panel.waitForEvent('download');
-  await panel.getByRole('button', { name: '导出 MD', exact: true }).click();
-  const file = path.join(os.tmpdir(), `whn-file-${Date.now()}.md`);
-  await (await downloadPromise).saveAs(file);
-  const markdown = fs.readFileSync(file, 'utf8');
+  const markdown = await readCopiedMarkdown(panel, { button: '复制 Markdown', copied: '已复制 ✓' });
   expect(markdown).toContain(`# ${TITLE}\n来源：${pageKey(docUrl)} · `);
   expect(markdown).toContain(`> ${QUOTE_1}`);
   expect(markdown).toContain(`> ${QUOTE_2}\n评论：${COMMENT_2}`);
