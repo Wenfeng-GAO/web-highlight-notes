@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv, clickActionIcon, setFileAccess } from './native.js';
+import { overlayButton, overlayDialog, promptShown } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = process.env.WHN_SHOTS || '';
@@ -125,10 +126,10 @@ test('file access on: a local file works with no click; the side panel shows its
   await expect.poll(() => ready(page)).toBe('1');
 
   await selectText(page, '#p1', QUOTE_1);
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await selectText(page, '#p2', QUOTE_2);
-  await page.getByRole('button', { name: '划线+评论', exact: true }).click();
-  const bubble = page.getByRole('dialog', { name: '划线评论' });
+  await overlayButton(page, '划线+评论').click();
+  const bubble = overlayDialog(page, '划线评论');
   await bubble.getByRole('textbox', { name: '评论' }).fill(COMMENT_2);
   await bubble.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.locator('.whn-hl')).toHaveCount(2);
@@ -136,7 +137,7 @@ test('file access on: a local file works with no click; the side panel shows its
   expect(stored.highlights).toHaveLength(2);
   // Local files never get the per-site permission card.
   await page.waitForTimeout(500);
-  await expect(page.locator('#whn-root iframe.prompt.open')).toHaveCount(0);
+  expect(await promptShown(page)).toBe(false);
   expect(await page.evaluate(() => document.documentElement.dataset.whnSite)).toBe('granted');
 
   const panel = await openPanel(await tabIdOf(page));

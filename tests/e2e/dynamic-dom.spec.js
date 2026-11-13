@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { expectOverlay, overlayButton } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = '/opt/cursor/artifacts';
@@ -142,7 +143,7 @@ test('replacing a paragraph with the same text brings the highlight back', async
   await page.goto(fileUrl);
   await expect.poll(() => ready(page)).toBe('1');
   await selectFromTo(page, '#stable');
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await expect(page.locator('#stable .whn-hl')).toHaveText(STABLE);
 
   await page.locator('#stable').evaluate((el) => {
@@ -158,7 +159,7 @@ test('clearing a paragraph and putting the same text back restores the highlight
   await page.goto(fileUrl);
   await expect.poll(() => ready(page)).toBe('1');
   await selectFromTo(page, '#virtual');
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await expect(page.locator('#virtual .whn-hl')).toHaveText(VIRTUAL);
 
   await page.locator('#virtual').evaluate((el) => {
@@ -186,7 +187,7 @@ test('a sanitizer that strips marks does not keep the page busy', async () => {
     strip();
   });
   await selectFromTo(page, '#stable');
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await page.waitForTimeout(2500);
   expect(await page.evaluate(() => 1 + 1)).toBe(2);
   const saved = await stored(pageKey(fileUrl));
@@ -211,16 +212,16 @@ test('comment typing is isolated from document shortcuts, including edit and sav
   await page.goto(new URL('files.html', fileUrl).href);
   await expect.poll(() => ready(page)).toBe('1');
   await selectDiff(page);
-  await page.getByRole('button', { name: '划线+评论', exact: true }).click();
-  const area = page.locator('#whn-root textarea');
+  await overlayButton(page, '划线+评论').click();
+  const area = overlayButton(page, '评论').getByRole('textbox', { name: '评论' });
   await area.pressSequentially('alpha beta');
-  await expect(area).toHaveValue('alpha beta');
+  await expectOverlay(area).toHaveValue('alpha beta');
   expect(await page.evaluate(() => window.stolen)).toBe(0);
   await area.press('Control+Enter');
   await expect.poll(async () => (await stored(pageKey(page.url())))?.highlights[0]?.comment).toBe('alpha beta');
   await page.locator('#line57 .whn-hl').click();
   await area.pressSequentially(' edit');
-  await expect(area).toHaveValue('alpha beta edit');
+  await expectOverlay(area).toHaveValue('alpha beta edit');
   expect(await page.evaluate(() => window.stolen)).toBe(0);
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/sidepanel.html?tabId=${await tabIdOf(page)}`);
@@ -240,7 +241,7 @@ test('mid-line cross-row quote survives refresh and a six-second Files rewrite; 
   await page.goto(url);
   await expect.poll(() => ready(page)).toBe('1');
   await selectDiff(page);
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   const quote = 'first = alpha();const second = beta();const third = gamma();';
   await expect.poll(async () => (await stored(pageKey(url)))?.highlights[0]?.text).toBe(quote);
   await page.reload();

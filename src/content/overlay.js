@@ -155,7 +155,7 @@ export function mountOverlay() {
   ].join(';');
   document.documentElement.appendChild(host);
 
-  const shadow = host.attachShadow({ mode: 'open' });
+  const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `
     <style>${CSS}</style>
     <div class="toolbar" role="toolbar">

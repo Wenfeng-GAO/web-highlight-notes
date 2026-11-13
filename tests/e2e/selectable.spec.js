@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { overlayButton } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = '/opt/cursor/artifacts';
@@ -39,7 +40,7 @@ async function selectFromTo(page, startSel, endSel) {
 }
 
 async function highlight(page) {
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await page.waitForTimeout(200);
 }
 

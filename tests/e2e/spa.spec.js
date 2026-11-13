@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { chromeLocaleEnv } from './native.js';
+import { overlayButton } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const QUOTE_A = '春天的花园里开满了黄色的花';
@@ -37,7 +38,7 @@ async function highlight(page, quote) {
     getSelection().addRange(range);
     node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
   }, quote);
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await expect(page.locator('.whn-hl', { hasText: quote })).toHaveCount(1);
 }
 

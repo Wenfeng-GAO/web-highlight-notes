@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
 import { answerPermissionDialog, chromeLocaleEnv, clickActionIcon } from './native.js';
+import { overlayBox, overlayButton, promptShown, readyPrompt } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const shots = process.env.WHN_SHOTS || '';
@@ -46,28 +47,27 @@ async function selectText(page, selector, text) {
 
 async function highlight(page, selector, text) {
   await selectText(page, selector, text);
-  await page.getByRole('button', { name: '划线', exact: true }).click();
+  await overlayButton(page, '划线').click();
   await expect(page.locator('.whn-hl', { hasText: text })).toHaveCount(1);
 }
 
 const ready = (page) => page.evaluate(() => document.documentElement.dataset.whnReady || '');
-const promptFrame = (page) => page.frameLocator('#whn-root >> iframe.prompt');
 
 /** Viewport rects of the card and of the given highlight (union of its spans). */
 async function cardAndHighlightRects(page, text) {
-  return page.evaluate((quote) => {
-    const card = document.querySelector('#whn-root').shadowRoot.querySelector('iframe.prompt').getBoundingClientRect();
+  const card = await overlayBox(page, 'iframe.prompt');
+  const hl = await page.evaluate((quote) => {
     const spans = [...document.querySelectorAll('.whn-hl')].filter((el) => {
       const id = el.dataset.whnId;
       return [...document.querySelectorAll(`.whn-hl[data-whn-id="${id}"]`)].map((n) => n.textContent).join('') === quote;
     });
     const rects = spans.map((el) => el.getBoundingClientRect());
-    const hl = {
+    return {
       top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)),
       left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)),
     };
-    return { card: { top: card.top, bottom: card.bottom, left: card.left, right: card.right, width: card.width }, hl, viewport: innerHeight };
   }, text);
+  return { card, hl, viewport: await page.evaluate(() => innerHeight) };
 }
 
 function overlaps(a, b) {
@@ -140,7 +140,7 @@ test('before any grant: nothing auto-injects; an icon click (activeTab) makes hi
   await highlight(page, '#p1', QUOTE_1);
   expect((await stored(pageKey(page.url())))?.highlights?.map((h) => h.text)).toEqual([QUOTE_1]);
 
-  const card = promptFrame(page);
+  const card = await readyPrompt(page);
   await expect(card.getByText('允许在此网站自动显示划线，刷新后仍在')).toBeVisible();
   await expect(card.getByRole('button', { name: '允许', exact: true })).toBeVisible();
   await expect(card.getByRole('button', { name: '暂不', exact: true })).toBeVisible();
@@ -155,10 +155,10 @@ test('before any grant: nothing auto-injects; an icon click (activeTab) makes hi
 
 test('allow grants only this site; reload restores highlights with no click', async () => {
   const page = context.pages()[0];
-  await promptFrame(page).getByRole('button', { name: '允许', exact: true }).click();
+  await (await readyPrompt(page)).getByRole('button', { name: '允许', exact: true }).click();
   await answerPermissionDialog(page, true);
   await expect.poll(() => contains('http://a.test/*')).toBe(true);
-  await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
+  await expect.poll(() => promptShown(page)).toBe(false);
   expect(await contains('http://b.test/*')).toBe(false);
   await expect.poll(registeredMatches).toEqual(['file:///*', 'http://a.test/*']);
 
@@ -169,7 +169,7 @@ test('allow grants only this site; reload restores highlights with no click', as
   // A new highlight on a granted site does not prompt again.
   await highlight(page, '#p2', QUOTE_2);
   await page.waitForTimeout(500);
-  await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
+  await expect.poll(() => promptShown(page)).toBe(false);
 });
 
 test('the card flips above the selection when there is no room below, still without overlap', async () => {
@@ -185,8 +185,8 @@ test('the card flips above the selection when there is no room below, still with
   });
   expect(await page.evaluate(() => innerHeight - document.querySelector('#p2').getBoundingClientRect().bottom)).toBeLessThan(40);
   await selectText(page, '#p2', QUOTE_2);
-  await page.getByRole('button', { name: '划线', exact: true }).click();
-  await expect(page.locator('#whn-root >> iframe.prompt')).toBeVisible();
+  await overlayButton(page, '划线').click();
+  await expect.poll(() => promptShown(page)).toBe(true);
   await page.waitForTimeout(300);
   const { card, hl } = await cardAndHighlightRects(page, QUOTE_2);
   expect(overlaps(card, hl)).toBe(false);
@@ -211,9 +211,9 @@ test('declined site: highlight saved, listed with 「此网站需点击插件图
   await highlight(page, '#p1', QUOTE_1);
 
   // Decline in the native dialog (default button).
-  await promptFrame(page).getByRole('button', { name: '允许', exact: true }).click();
+  await (await readyPrompt(page)).getByRole('button', { name: '允许', exact: true }).click();
   await answerPermissionDialog(page, false);
-  await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
+  await expect.poll(() => promptShown(page)).toBe(false);
   expect(await contains('http://c.test/*')).toBe(false);
   const declined = await worker.evaluate(async () => (await chrome.storage.local.get('__whn:declined'))['__whn:declined']);
   expect(Object.keys(declined)).toEqual(['http://c.test/*']);
@@ -258,7 +258,7 @@ test('declined site: highlight saved, listed with 「此网站需点击插件图
   await expect(page.locator('.whn-hl', { hasText: QUOTE_1 })).toHaveCount(1);
   await highlight(page, '#p2', QUOTE_2);
   await page.waitForTimeout(600);
-  await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
+  await expect.poll(() => promptShown(page)).toBe(false);
   await panel.close();
   await page.close();
 });
@@ -269,8 +269,8 @@ test('「暂不」 declines without the native dialog; 「去授权」 in the si
   await clickActionIcon(page);
   await expect.poll(() => ready(page)).toBe('1');
   await highlight(page, '#p1', QUOTE_1);
-  await promptFrame(page).getByRole('button', { name: '暂不', exact: true }).click();
-  await expect(page.locator('#whn-root >> iframe.prompt')).toBeHidden();
+  await (await readyPrompt(page)).getByRole('button', { name: '暂不', exact: true }).click();
+  await expect.poll(() => promptShown(page)).toBe(false);
   expect(await contains('http://d.test/*')).toBe(false);
 
   const tabId = Number(await page.evaluate(() => document.documentElement.dataset.whnTab));

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { pageKey } from '../../src/lib/url.js';
 import { startFixtureServer } from '../fixtures/server.js';
 import { answerPermissionDialog, chromeLocaleEnv } from './native.js';
+import { expectOverlay, overlayButton, overlayDialog } from './overlay-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifacts = path.join(root, 'artifacts');
@@ -80,15 +81,15 @@ async function waitReady(target) {
 }
 
 function highlightButton(target) {
-  return target.getByRole('button', { name: '划线', exact: true });
+  return overlayButton(target, '划线');
 }
 
 function commentButton(target) {
-  return target.getByRole('button', { name: '划线+评论', exact: true });
+  return overlayButton(target, '划线+评论');
 }
 
 function bubble(target) {
-  return target.getByRole('dialog', { name: '划线评论' });
+  return overlayDialog(target, '划线评论');
 }
 
 async function exportMarkdown() {
@@ -189,7 +190,7 @@ test('highlights, comments, and summary survive a reload', async () => {
 
   await selectText(article, '#edit', '可编辑区域的文字');
   await article.waitForTimeout(200);
-  await expect(highlightButton(article)).toBeHidden();
+  await expectOverlay(highlightButton(article)).toBeHidden();
 
   await article.locator('#area').evaluate((element) => {
     element.focus();
@@ -197,24 +198,24 @@ test('highlights, comments, and summary survive a reload', async () => {
     element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
   });
   await article.waitForTimeout(200);
-  await expect(highlightButton(article)).toBeHidden();
+  await expectOverlay(highlightButton(article)).toBeHidden();
 
   await selectText(article, '#p1', QUOTE_1);
-  await expect(highlightButton(article)).toBeVisible();
+  await expectOverlay(highlightButton(article)).toBeVisible();
   await article.screenshot({ path: path.join(artifacts, 'toolbar.png') });
   await highlightButton(article).click();
   await expect(article.locator('.whn-hl', { hasText: QUOTE_1 })).toHaveCount(1);
   await expect(panel.locator('.quote', { hasText: QUOTE_1 })).toBeVisible();
 
   await selectText(article, '#p2', QUOTE_2);
-  await expect(commentButton(article)).toBeVisible();
+  await expectOverlay(commentButton(article)).toBeVisible();
   await commentButton(article).click();
   const dialog = bubble(article);
-  await expect(dialog).toBeVisible();
+  await expectOverlay(dialog).toBeVisible();
   await dialog.getByRole('textbox', { name: '评论' }).fill('临时草稿');
   await article.screenshot({ path: path.join(artifacts, 'bubble.png') });
   await article.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  await expectOverlay(dialog).toBeHidden();
 
   await expect.poll(async () => worker.evaluate(async (key) => {
     const stored = await chrome.storage.local.get(key);
@@ -224,17 +225,17 @@ test('highlights, comments, and summary survive a reload', async () => {
   await article.reload();
   await waitReady(article);
   await article.locator('.whn-hl', { hasText: QUOTE_2 }).click();
-  await expect(dialog.getByRole('textbox', { name: '评论' })).toHaveValue('临时草稿');
+  await expectOverlay(dialog.getByRole('textbox', { name: '评论' })).toHaveValue('临时草稿');
   await dialog.getByRole('textbox', { name: '评论' }).fill(COMMENT_2);
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expectOverlay(dialog).toBeHidden();
   await expect(article.locator('.whn-hl-end.whn-has-comment', { hasText: QUOTE_2 })).toHaveCount(1);
 
   await selectText(article, '#p3', QUOTE_3);
   await commentButton(article).click();
   await dialog.getByRole('textbox', { name: '评论' }).fill(COMMENT_3);
   await dialog.getByRole('textbox', { name: '评论' }).press('Control+Enter');
-  await expect(dialog).toBeHidden();
+  await expectOverlay(dialog).toBeHidden();
 
   await expect(panel.locator('#counts')).toHaveText('3 条划线 · 2 条评论');
   await panel.locator('#summary').fill(SUMMARY);
@@ -277,18 +278,18 @@ test('does not show the toolbar for selections in input, textarea, or contentedi
       element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
     });
     await article.waitForTimeout(250);
-    await expect(highlightButton(article), selector).toBeHidden();
+    await expectOverlay(highlightButton(article), selector).toBeHidden();
     await article.keyboard.press('Shift+ArrowRight');
     await article.waitForTimeout(250);
-    await expect(highlightButton(article), `${selector} keyboard`).toBeHidden();
+    await expectOverlay(highlightButton(article), `${selector} keyboard`).toBeHidden();
   }
   await article.locator('#edit').click();
   await selectText(article, '#edit', '可编辑区域的文字');
   await article.waitForTimeout(250);
-  await expect(highlightButton(article)).toBeHidden();
+  await expectOverlay(highlightButton(article)).toBeHidden();
   await article.keyboard.press('Shift+ArrowLeft');
   await article.waitForTimeout(250);
-  await expect(highlightButton(article)).toBeHidden();
+  await expectOverlay(highlightButton(article)).toBeHidden();
   await article.evaluate(() => { document.activeElement?.blur(); window.getSelection().removeAllRanges(); });
 });
 
@@ -357,9 +358,9 @@ test('deletes a highlight from the bubble and keeps it gone after reload', async
 
   await article.locator('.whn-hl', { hasText: QUOTE_1 }).click();
   const dialog = bubble(article);
-  await expect(dialog).toBeVisible();
+  await expectOverlay(dialog).toBeVisible();
   await dialog.getByRole('button', { name: '删除划线', exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await expectOverlay(dialog).toBeHidden();
   await expect(article.locator('.whn-hl', { hasText: QUOTE_1 })).toHaveCount(0);
   await expect(panel.locator('#counts')).toHaveText('2 条划线 · 2 条评论');
   await expect(panel.locator('.quote', { hasText: QUOTE_1 })).toHaveCount(0);
