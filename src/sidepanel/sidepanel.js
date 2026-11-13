@@ -28,6 +28,7 @@ let storageKey = '';
 let copiedTimer = 0;
 let saveTimer = 0;
 let savedSummary = '';
+let summarySaveChain = Promise.resolve();
 let showGeneration = 0;
 let showChain = Promise.resolve();
 // Title the content script adopted after a same-document navigation (#19).
@@ -222,17 +223,37 @@ function syncSummaryFromDom() {
   record.summary = summaryEl.value;
 }
 
+function requestSummarySave() {
+  flushSummarySave().catch((error) => {
+    console.error(error);
+  });
+}
+
+// One summary write at a time. savedSummary moves only to text that set() kept.
 async function flushSummarySave() {
+  const run = summarySaveChain.then(() => persistSummarySnapshot());
+  summarySaveChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function persistSummarySnapshot() {
   if (!record?.url) return;
   clearTimeout(saveTimer);
   saveTimer = 0;
   syncSummaryFromDom();
   const next = record.summary || '';
   if (next === savedSummary) return;
-  savedSummary = next;
   const key = record.url;
   const payload = toStoredRecord(record);
   await chrome.storage.local.set({ [key]: payload });
+  if (!record || record.url !== key) return;
+  syncSummaryFromDom();
+  if ((record.summary || '') !== next) {
+    savedSummary = next;
+    await persistSummarySnapshot();
+    return;
+  }
+  savedSummary = next;
 }
 
 function scheduleSummarySave() {
@@ -241,7 +262,7 @@ function scheduleSummarySave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = 0;
-    flushSummarySave();
+    requestSummarySave();
   }, SAVE_DEBOUNCE_MS);
 }
 
@@ -479,7 +500,7 @@ function setMode(mode) {
 function leavePage(id) {
   clearTimeout(saveTimer);
   saveTimer = 0;
-  flushSummarySave();
+  requestSummarySave();
   showGeneration += 1;
   unreadableTabId = Number.isFinite(id) ? id : null;
 }
@@ -579,13 +600,13 @@ function bindPanelEvents() {
   });
   summaryEl.addEventListener('input', scheduleSummarySave);
   summaryEl.addEventListener('blur', () => {
-    flushSummarySave();
+    requestSummarySave();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flushSummarySave();
+    if (document.visibilityState === 'hidden') requestSummarySave();
   });
   window.addEventListener('pagehide', () => {
-    flushSummarySave();
+    requestSummarySave();
   });
   exportBtn.addEventListener('click', () => {
     onExport();
