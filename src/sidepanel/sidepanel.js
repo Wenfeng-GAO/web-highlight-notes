@@ -204,7 +204,7 @@ function render({ urlChanged = false } = {}) {
   titleEl.textContent = title;
   const highlights = record?.highlights || [];
   countsEl.textContent = countsText(highlights);
-  setExportAvailable({ resetStatus: urlChanged });
+  syncExportAvailability({ resetStatus: urlChanged });
   updateStatus();
   const nextSummary = record?.summary || '';
   const focused = isEditingSummary();
@@ -290,6 +290,15 @@ async function copyText(text) {
   }
 }
 
+function hasCopyBody(summary, highlights) {
+  return String(summary ?? '').trim() !== '' || (highlights || []).length > 0;
+}
+
+function exportSummaryText() {
+  if (!record) return '';
+  return isEditingSummary() ? summaryEl.value : (record.summary || '');
+}
+
 function describedExport() {
   const ids = [];
   if (!exportHintEl.hidden) ids.push(exportHintEl.id);
@@ -324,6 +333,14 @@ function setExportAvailable({ resetStatus = false } = {}) {
   describedExport();
 }
 
+function syncExportAvailability({ resetStatus = false } = {}) {
+  if (!record || !hasCopyBody(exportSummaryText(), record.highlights)) {
+    setExportUnavailable();
+    return;
+  }
+  setExportAvailable({ resetStatus });
+}
+
 function showExportResult(message) {
   exportErrorEl.hidden = true;
   exportBtn.disabled = false;
@@ -338,6 +355,7 @@ function showExportResult(message) {
 }
 
 function showExportFailure() {
+  // Stays until the next user action. The 1.5s timer belongs only to success.
   clearTimeout(copiedTimer);
   copiedTimer = 0;
   exportBtn.disabled = false;
@@ -348,18 +366,18 @@ function showExportFailure() {
 }
 
 async function onExport() {
-  if (!record) {
+  if (!record?.url) {
     setExportUnavailable();
     return;
   }
-  exportErrorEl.hidden = true;
-  describedExport();
   try {
     await flushSummarySave();
-    if (!record?.url) {
+    if (!record?.url || !hasCopyBody(record.summary, record.highlights)) {
       setExportUnavailable();
       return;
     }
+    exportErrorEl.hidden = true;
+    describedExport();
     if (!record.title) record.title = tabTitle || t('panelUntitled');
     await persist();
     const markdown = toMarkdown({
@@ -645,7 +663,10 @@ function bindPanelEvents() {
     // A note save can echo a record from before the document was renamed.
     paintLiveTitle();
   });
-  summaryEl.addEventListener('input', scheduleSummarySave);
+  summaryEl.addEventListener('input', () => {
+    scheduleSummarySave();
+    syncExportAvailability({ resetStatus: false });
+  });
   summaryEl.addEventListener('blur', () => {
     flushSummarySave();
   });

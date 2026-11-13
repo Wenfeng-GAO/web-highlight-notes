@@ -28,6 +28,7 @@ const COPY = {
     unavailable: '此页面没有可复制的内容。',
     failed: '未能复制。',
     clickToUse: '点击插件图标，在此页面使用划线笔记',
+    panelEmpty: '选中文字即可划线',
     untitled: '未命名页面',
     labels: { source: '来源：', summary: '摘要', highlights: '划线', comment: '评论：' },
   },
@@ -40,6 +41,7 @@ const COPY = {
     unavailable: 'There is nothing to copy on this page.',
     failed: "Couldn't copy.",
     clickToUse: 'Click the extension icon to use highlight notes on this page',
+    panelEmpty: 'Select text to highlight',
     untitled: 'Untitled page',
     labels: { source: 'Source: ', summary: 'Summary', highlights: 'Highlights', comment: 'Note: ' },
   },
@@ -54,6 +56,14 @@ function note(entry) {
 
 function expectedMarkdown({ title, url, date, summary, highlight, comment, labels }) {
   return `# ${title}\n${labels.source}${url} · ${date}\n## ${labels.summary}\n${summary}\n## ${labels.highlights}\n> ${highlight}\n${labels.comment}${comment}\n`;
+}
+
+function summaryOnlyMarkdown({ title, url, date, summary, labels }) {
+  return `# ${title}\n${labels.source}${url} · ${date}\n## ${labels.summary}\n${summary}\n## ${labels.highlights}\n`;
+}
+
+function highlightOnlyMarkdown({ title, url, date, text, comment, labels }) {
+  return `# ${title}\n${labels.source}${url} · ${date}\n## ${labels.summary}\n\n## ${labels.highlights}\n> ${text}\n${labels.comment}${comment}\n`;
 }
 
 async function browserDate(panel) {
@@ -194,7 +204,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
       note({ tag, grantError: context._grantError || '', ...entry });
     }
 
-    async function pasteOnce() {
+    async function pasteOnce(editorShot) {
       const editor = await context.newPage();
       await editor.setViewportSize({ width: 800, height: 480 });
       await editor.goto(fixture.pasteUrl);
@@ -220,6 +230,18 @@ for (const [tag, copy] of Object.entries(COPY)) {
       expect(focused).toMatchObject({ hasFocus: true, activeId: 'paste-target' });
       await editor.keyboard.press('Control+V');
       await editor.waitForTimeout(500);
+      if (editorShot) {
+        await target.evaluate((area) => {
+          area.style.display = 'block';
+          area.style.boxSizing = 'border-box';
+          area.style.width = '760px';
+          area.style.font = '14px/1.45 ui-monospace, monospace';
+          area.style.whiteSpace = 'pre';
+          area.rows = Math.max(12, area.value.split('\n').length + 1);
+        });
+        fs.mkdirSync(shotDir, { recursive: true });
+        await editor.screenshot({ path: path.join(shotDir, `${editorShot}.png`) });
+      }
       return {
         pasted: await target.inputValue(),
         pasteEvents: await editor.evaluate(() => window.__whnPasteEvents || []),
@@ -256,8 +278,290 @@ for (const [tag, copy] of Object.entries(COPY)) {
       expect(probe.anchors).toBe(1);
       expect(probe.urls).toBeGreaterThan(0);
       expect(probe.downloads).toEqual(['watch-probe.md']);
-      record({ case: 'empty', productDownloads: [], probe, pasted: null });
+      record({ case: 'no-record', productDownloads: [], probe, pasted: null });
       await labelFixture(panel, `${tag}-empty`);
+    });
+
+    async function assertNoCopyAttempt(panel, exportBtn) {
+      await panel.evaluate(() => {
+        window.__whnWriteCalls = 0;
+        window.__whnExecCopy = 0;
+        const write = navigator.clipboard.writeText.bind(navigator.clipboard);
+        navigator.clipboard.writeText = (text) => {
+          window.__whnWriteCalls += 1;
+          return write(text);
+        };
+        const original = document.execCommand.bind(document);
+        document.execCommand = (command, ...args) => {
+          if (String(command).toLowerCase() === 'copy') window.__whnExecCopy += 1;
+          return original(command, ...args);
+        };
+      });
+      await exportBtn.click({ force: true });
+      await expect(exportBtn).toBeDisabled();
+      await expect(exportBtn).toHaveText(copy.copyLabel);
+      await expect(exportBtn).not.toHaveText(copy.copied);
+      // Disabled buttons do not receive a click. Remove disabled only so the
+      // handler itself can be reached; this is not a user-enabled control.
+      await panel.evaluate(() => {
+        const button = document.getElementById('export');
+        button.disabled = false;
+        button.setAttribute('aria-disabled', 'false');
+        button.click();
+      });
+      await expect(exportBtn).toBeDisabled();
+      await expect(exportBtn).toHaveAttribute('aria-disabled', 'true');
+      await expect(exportBtn).toHaveText(copy.copyLabel);
+      await expect(exportBtn).not.toHaveText(copy.copied);
+      await expect(panel.locator('#export-error')).toBeHidden();
+      const calls = await panel.evaluate(() => ({
+        writes: window.__whnWriteCalls || 0,
+        execs: window.__whnExecCopy || 0,
+      }));
+      expect(calls).toEqual({ writes: 0, execs: 0 });
+      return calls;
+    }
+
+    test('stored record with no highlights and an empty summary keeps copy disabled', async () => {
+      const pageUrl = `${fixture.url}?case=empty-body-${tag}`;
+      await seed(pageUrl, { title: 'Empty body', summary: '', highlights: [] });
+      const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Empty body' }));
+      await expect(panel.locator('#title')).toHaveText('Empty body');
+      await expect(panel.locator('#summary')).toHaveValue('');
+      await expect(panel.locator('#list .empty')).toHaveText(copy.panelEmpty);
+      await expect(panel.locator('#list .quote')).toHaveCount(0);
+      const exportBtn = panel.locator('#export');
+      await expect(exportBtn).toBeDisabled();
+      await expect(exportBtn).toHaveAttribute('aria-disabled', 'true');
+      await expect(exportBtn).toHaveText(copy.copyLabel);
+      await expect(panel.locator('#export-hint')).toBeVisible();
+      await expect(panel.locator('#export-hint')).toHaveText(copy.unavailable);
+      await expect(panel.locator('#export-error')).toBeHidden();
+      const downloads = await armDownloadWatch(panel);
+      const calls = await assertNoCopyAttempt(panel, exportBtn);
+      await assertNoDownload(panel, downloads);
+      record({
+        case: 'empty-body',
+        summary: '',
+        highlights: 0,
+        writes: calls.writes,
+        execs: calls.execs,
+        productDownloads: [...downloads],
+      });
+      await labelFixture(panel, `${tag}-empty-body`);
+    });
+
+    test('a whitespace-only summary is not copyable body', async () => {
+      const pageUrl = `${fixture.url}?case=blank-summary-${tag}`;
+      const summary = ' \t\n ';
+      await seed(pageUrl, { title: 'Blank summary', summary, highlights: [] });
+      const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Blank summary' }));
+      await expect(panel.locator('#title')).toHaveText('Blank summary');
+      await expect(panel.locator('#summary')).toHaveValue(summary);
+      await expect(panel.locator('#list .quote')).toHaveCount(0);
+      const exportBtn = panel.locator('#export');
+      await expect(exportBtn).toBeDisabled();
+      await expect(panel.locator('#export-hint')).toHaveText(copy.unavailable);
+      const downloads = await armDownloadWatch(panel);
+      const calls = await assertNoCopyAttempt(panel, exportBtn);
+      await assertNoDownload(panel, downloads);
+      record({
+        case: 'whitespace-summary',
+        summary,
+        highlights: 0,
+        writes: calls.writes,
+        execs: calls.execs,
+        productDownloads: [...downloads],
+      });
+      await labelFixture(panel, `${tag}-blank-summary`);
+    });
+
+    test('summary only is copied with a real Ctrl+V', async () => {
+      const pageUrl = `${fixture.url}?case=summary-only-${tag}`;
+      const body = { title: 'Summary only', summary: 'Only the summary', highlights: [] };
+      const key = await seed(pageUrl, body);
+      const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: body.title }));
+      await expect(panel.locator('#summary')).toHaveValue(body.summary);
+      await expect(panel.locator('#list .quote')).toHaveCount(0);
+      await expect(panel.locator('#export')).toBeEnabled();
+      await expect(panel.locator('#export-hint')).toBeHidden();
+      await panel.evaluate(() => {
+        window.__whnExecCopy = 0;
+        window.__whnWriteRef = navigator.clipboard.writeText;
+        const original = document.execCommand.bind(document);
+        document.execCommand = (command, ...args) => {
+          if (String(command).toLowerCase() === 'copy') window.__whnExecCopy += 1;
+          return original(command, ...args);
+        };
+      });
+      const downloads = await armDownloadWatch(panel);
+      const date = await browserDate(panel);
+      const expected = summaryOnlyMarkdown({
+        title: body.title,
+        url: key,
+        date,
+        summary: body.summary,
+        labels: copy.labels,
+      });
+      await panel.bringToFront();
+      await panel.locator('#export').click();
+      await expect(panel.locator('#export')).toHaveText(copy.copied);
+      const writes = await panel.evaluate(() => ({
+        execCopy: window.__whnExecCopy || 0,
+        writeStillNative: navigator.clipboard.writeText === window.__whnWriteRef,
+      }));
+      expect(writes).toEqual({ execCopy: 0, writeStillNative: true });
+      await assertNoDownload(panel, downloads);
+      await labelFixture(panel, `${tag}-summary-only`);
+      const pasted = await pasteOnce(`${tag}-summary-only-paste`);
+      record({
+        case: 'summary-only',
+        pasted: pasted.pasted,
+        expected,
+        match: pasted.pasted === expected,
+        pasteEvents: pasted.pasteEvents,
+        productDownloads: [...downloads],
+        failureInjection: 'none',
+      });
+      expect(pasted.pasteEvents).toEqual([{ type: 'paste', isTrusted: true, defaultPrevented: false }]);
+      expect(pasted.pasted).toBe(expected);
+      await assertNoDownload(panel, downloads);
+      await assertDownloadWatchLive(panel);
+      const probe = await probeWatchers(panel, downloads);
+      expect(probe.anchors).toBe(1);
+      expect(probe.urls).toBeGreaterThan(0);
+      expect(probe.downloads).toEqual(['watch-probe.md']);
+    });
+
+    test('highlights only are copied with a real Ctrl+V', async () => {
+      const pageUrl = `${fixture.url}?case=highlight-only-${tag}`;
+      const body = {
+        title: 'Highlight only',
+        summary: '',
+        highlights: [{ id: 'h1', text: 'Only the line', comment: 'Only the note', pos: 1, createdAt: 1 }],
+      };
+      const key = await seed(pageUrl, body);
+      const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: body.title }));
+      await expect(panel.locator('#summary')).toHaveValue('');
+      await expect(panel.locator('.quote')).toHaveText('Only the line');
+      await expect(panel.locator('#export')).toBeEnabled();
+      await expect(panel.locator('#export-hint')).toBeHidden();
+      await panel.evaluate(() => {
+        window.__whnExecCopy = 0;
+        window.__whnWriteRef = navigator.clipboard.writeText;
+        const original = document.execCommand.bind(document);
+        document.execCommand = (command, ...args) => {
+          if (String(command).toLowerCase() === 'copy') window.__whnExecCopy += 1;
+          return original(command, ...args);
+        };
+      });
+      const downloads = await armDownloadWatch(panel);
+      const date = await browserDate(panel);
+      const expected = highlightOnlyMarkdown({
+        title: body.title,
+        url: key,
+        date,
+        text: 'Only the line',
+        comment: 'Only the note',
+        labels: copy.labels,
+      });
+      await panel.bringToFront();
+      await panel.locator('#export').click();
+      await expect(panel.locator('#export')).toHaveText(copy.copied);
+      const writes = await panel.evaluate(() => ({
+        execCopy: window.__whnExecCopy || 0,
+        writeStillNative: navigator.clipboard.writeText === window.__whnWriteRef,
+      }));
+      expect(writes).toEqual({ execCopy: 0, writeStillNative: true });
+      await assertNoDownload(panel, downloads);
+      await labelFixture(panel, `${tag}-highlight-only`);
+      const pasted = await pasteOnce(`${tag}-highlight-only-paste`);
+      record({
+        case: 'highlight-only',
+        pasted: pasted.pasted,
+        expected,
+        match: pasted.pasted === expected,
+        pasteEvents: pasted.pasteEvents,
+        productDownloads: [...downloads],
+        failureInjection: 'none',
+      });
+      expect(pasted.pasteEvents).toEqual([{ type: 'paste', isTrusted: true, defaultPrevented: false }]);
+      expect(pasted.pasted).toBe(expected);
+      await assertNoDownload(panel, downloads);
+      await assertDownloadWatchLive(panel);
+      const probe = await probeWatchers(panel, downloads);
+      expect(probe.anchors).toBe(1);
+      expect(probe.urls).toBeGreaterThan(0);
+      expect(probe.downloads).toEqual(['watch-probe.md']);
+    });
+
+    test('editing the summary and copying without blurring reads the latest text', async () => {
+      const pageUrl = `${fixture.url}?case=summary-live-${tag}`;
+      const stale = 'Stale summary';
+      const fresh = 'Fresh summary line';
+      const key = await seed(pageUrl, { title: 'Live summary', summary: stale, highlights: [] });
+      const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Live summary' }));
+      const summary = panel.locator('#summary');
+      await expect(summary).toHaveValue(stale);
+      await expect(panel.locator('#list .quote')).toHaveCount(0);
+      await summary.click();
+      await summary.fill(fresh);
+      await expect(summary).toHaveValue(fresh);
+      await panel.evaluate(() => {
+        window.__whnExecCopy = 0;
+        window.__whnWriteRef = navigator.clipboard.writeText;
+        const original = document.execCommand.bind(document);
+        document.execCommand = (command, ...args) => {
+          if (String(command).toLowerCase() === 'copy') window.__whnExecCopy += 1;
+          return original(command, ...args);
+        };
+      });
+      const downloads = await armDownloadWatch(panel);
+      const date = await browserDate(panel);
+      const expected = summaryOnlyMarkdown({
+        title: 'Live summary',
+        url: key,
+        date,
+        summary: fresh,
+        labels: copy.labels,
+      });
+      await panel.bringToFront();
+      const focusedBeforeClick = await panel.evaluate(() => document.activeElement?.id || '');
+      expect(focusedBeforeClick).toBe('summary');
+      await expect(panel.locator('#export')).toBeEnabled();
+      await expect(panel.locator('#export')).toHaveText(copy.copyLabel);
+      await panel.locator('#export').click();
+      await expect(panel.locator('#export')).toHaveText(copy.copied);
+      await expect(summary).toHaveValue(fresh);
+      const writes = await panel.evaluate(() => ({
+        execCopy: window.__whnExecCopy || 0,
+        writeStillNative: navigator.clipboard.writeText === window.__whnWriteRef,
+      }));
+      expect(writes).toEqual({ execCopy: 0, writeStillNative: true });
+      await assertNoDownload(panel, downloads);
+      await labelFixture(panel, `${tag}-summary-live`);
+      const pasted = await pasteOnce(`${tag}-summary-live-paste`);
+      record({
+        case: 'summary-live',
+        stale,
+        fresh,
+        focusedBeforeClick,
+        pasted: pasted.pasted,
+        expected,
+        match: pasted.pasted === expected,
+        pasteEvents: pasted.pasteEvents,
+        productDownloads: [...downloads],
+        failureInjection: 'none',
+      });
+      expect(pasted.pasteEvents).toEqual([{ type: 'paste', isTrusted: true, defaultPrevented: false }]);
+      expect(pasted.pasted).toBe(expected);
+      expect(pasted.pasted).not.toContain(stale);
+      await assertNoDownload(panel, downloads);
+      await assertDownloadWatchLive(panel);
+      const probe = await probeWatchers(panel, downloads);
+      expect(probe.anchors).toBe(1);
+      expect(probe.urls).toBeGreaterThan(0);
+      expect(probe.downloads).toEqual(['watch-probe.md']);
     });
 
     test('human click writes with native writeText and Ctrl+V matches the markdown', async () => {
@@ -326,6 +630,11 @@ for (const [tag, copy] of Object.entries(COPY)) {
 
     test('rejected clipboard stays visible and downloads nothing', async () => {
       const pageUrl = `${fixture.url}?case=native-fail-${tag}`;
+      await seed(pageUrl, {
+        title: 'Blocked page',
+        summary: '',
+        highlights: [{ id: 'hf', text: 'Kept line', comment: '', pos: 1, createdAt: 1 }],
+      });
       const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Blocked page' }));
       await expect(panel.locator('#title')).toHaveText('Blocked page');
       const downloads = await armDownloadWatch(panel);
@@ -340,11 +649,12 @@ for (const [tag, copy] of Object.entries(COPY)) {
       await expect(panel.locator('#export-error')).toBeVisible();
       await expect(panel.locator('#export-error')).toHaveText(copy.failed);
       await labelFixture(panel, `${tag}-failure`);
-      await panel.waitForTimeout(1700);
+      await panel.waitForTimeout(5200);
       await expect(exportBtn).toHaveText(copy.retry);
       await expect(panel.locator('#export-error')).toBeVisible();
       await assertNoDownload(panel, downloads);
       await assertDownloadWatchLive(panel);
+      await seed(otherFileUrl, { title: 'Other note', summary: 'Other summary', highlights: [] });
       const other = await context.newPage();
       await other.goto(otherFileUrl);
       await expect(panel.locator('#title')).toHaveText('Other note');
@@ -357,7 +667,13 @@ for (const [tag, copy] of Object.entries(COPY)) {
       expect(probe.anchors).toBe(1);
       expect(probe.urls).toBeGreaterThan(0);
       expect(probe.downloads).toEqual(['watch-probe.md']);
-      record({ case: 'failure-persists', productDownloads: [], probe });
+      record({
+        case: 'failure-persists',
+        waitedMs: 5200,
+        failureInjection: 'writeText replaced with Promise.reject; execCommand forced to return false',
+        productDownloads: [],
+        probe,
+      });
     });
 
     test('explicit retry restores native writeText and Ctrl+V matches', async () => {
@@ -379,6 +695,9 @@ for (const [tag, copy] of Object.entries(COPY)) {
       await expect(panel.locator('#export')).toHaveText(copy.retry);
       await expect(panel.locator('#export-error')).toHaveText(copy.failed);
       await assertDownloadWatchLive(panel);
+      await panel.waitForTimeout(5200);
+      await expect(panel.locator('#export')).toHaveText(copy.retry);
+      await expect(panel.locator('#export-error')).toHaveText(copy.failed);
       await restoreNativeWrite(panel);
       const nativeRestored = await panel.evaluate(() => navigator.clipboard.writeText === window.__whnNativeWrite);
       expect(nativeRestored).toBe(true);
@@ -393,6 +712,8 @@ for (const [tag, copy] of Object.entries(COPY)) {
         labels: copy.labels,
       });
       await panel.bringToFront();
+      await expect(panel.locator('#export')).toHaveText(copy.retry);
+      await expect(panel.locator('#export-error')).toHaveText(copy.failed);
       await panel.locator('#export').click();
       await expect(panel.locator('#export')).toHaveText(copy.copied);
       await expect(panel.locator('#export-error')).toBeHidden();
@@ -407,6 +728,8 @@ for (const [tag, copy] of Object.entries(COPY)) {
         pasteEvents: pasted.pasteEvents,
         focused: pasted.focused,
         writeIsNative: true,
+        waitedMs: 5200,
+        failureInjection: 'writeText replaced with Promise.reject until restoreNativeWrite; execCommand stays the reject function',
         productDownloads: [...downloads],
         programmaticRead: 'not used; clipboard-read stays prompt and grantPermissions cannot target the extension origin',
       });

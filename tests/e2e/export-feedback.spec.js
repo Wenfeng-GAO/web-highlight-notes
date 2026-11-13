@@ -8,6 +8,7 @@ import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { startFixtureServer } from '../fixtures/server.js';
 import { chromeLocaleEnv } from './native.js';
+import { pageKey } from '../../src/lib/url.js';
 import { armCopyWatch, assertNoDownload } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -144,6 +145,14 @@ for (const [tag, copy] of Object.entries(COPY)) {
       if (context?._userDataDir) fs.rmSync(context._userDataDir, { recursive: true, force: true });
     });
 
+    async function seed(url, stored) {
+      const key = pageKey(url);
+      await worker.evaluate(async ({ key, stored }) => {
+        await chrome.storage.local.set({ [key]: stored });
+      }, { key, stored: { ...stored, url: key } });
+      return key;
+    }
+
     async function openPanel(query) {
       const panel = await context.newPage();
       await panel.setViewportSize({ width: 400, height: 720 });
@@ -174,15 +183,17 @@ for (const [tag, copy] of Object.entries(COPY)) {
       await labelFixture(panel, `${tag}-empty`);
     });
 
-    test('a readable page restores export after the empty state', async () => {
+    test('a readable page with a summary restores export after the empty state', async () => {
       const panel = await openPanel(new URLSearchParams({ tabId: String(httpTabId) }));
       await expect(panel.locator('#title')).toHaveText(copy.untitled);
       await expect(panel.locator('#export')).toBeDisabled();
+      await seed(fileUrl, { title: 'File note', summary: 'File summary', highlights: [] });
       const filePage = await context.newPage();
       await filePage.goto(fileUrl);
       await expect(panel.locator('#title')).toHaveText('File note');
       await expect(panel.locator('.app')).toHaveAttribute('data-mode', 'page');
       await expect(panel.locator('#list .empty')).toHaveText(copy.panelEmpty);
+      await expect(panel.locator('#summary')).toHaveValue('File summary');
       const exportBtn = panel.locator('#export');
       await expect(exportBtn).toBeEnabled();
       await expect(exportBtn).toHaveAttribute('aria-disabled', 'false');
@@ -194,6 +205,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
 
     test('fulfilled clipboard stub shows Copied and no download', async () => {
       const pageUrl = `${fixture.url}?case=success-${tag}`;
+      await seed(pageUrl, { title: 'Known page', summary: 'Known summary', highlights: [] });
       const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Known page' }));
       await expect(panel.locator('#title')).toHaveText('Known page');
       await expect(panel.locator('#export')).toBeEnabled();
@@ -208,6 +220,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
       // Stub argument only. The clipboard fact is the Ctrl+V DOM value in export-copy-native.spec.js.
       const written = await panel.evaluate(() => document.documentElement.dataset.clipboardText || '');
       expect(written).toContain('# Known page');
+      expect(written).toContain('Known summary');
       expect(written).toContain(copy.source);
       expect(written).toContain(pageUrl);
       await assertNoDownload(panel, downloads);
@@ -217,6 +230,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
 
     test('rejected clipboard stays visible with no download, then the stub retry shows Copied', async () => {
       const pageUrl = `${fixture.url}?case=retry-${tag}`;
+      await seed(pageUrl, { title: 'Retry page', summary: 'Retry summary', highlights: [] });
       const panel = await openPanel(new URLSearchParams({ url: pageUrl, title: 'Retry page' }));
       await expect(panel.locator('#title')).toHaveText('Retry page');
       await installClipboard(panel, 'reject');
@@ -234,7 +248,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
       await expect(error).toHaveText(copy.failed);
       assertNotSavedClaim(await error.innerText());
       await labelFixture(panel, `${tag}-failure`);
-      await panel.waitForTimeout(1700);
+      await panel.waitForTimeout(5200);
       await expect(exportBtn).toHaveText(copy.retry);
       await expect(error).toBeVisible();
       expect(await panel.evaluate(() => document.documentElement.dataset.clipboardResult)).toBe('reject');
@@ -248,6 +262,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
       // Stub argument only. The clipboard fact is the Ctrl+V DOM value in export-copy-native.spec.js.
       const written = await panel.evaluate(() => document.documentElement.dataset.clipboardText || '');
       expect(written).toContain('# Retry page');
+      expect(written).toContain('Retry summary');
       expect(written).toContain(copy.source);
       expect(written).toContain(pageUrl);
       await assertNoDownload(panel, downloads);
@@ -255,7 +270,14 @@ for (const [tag, copy] of Object.entries(COPY)) {
     });
 
     test('a failed copy stays visible until another page restores the action', async () => {
-      const panel = await openPanel(new URLSearchParams({ url: `${fixture.url}?case=blocked-${tag}`, title: 'Blocked page' }));
+      const blockedUrl = `${fixture.url}?case=blocked-${tag}`;
+      await seed(blockedUrl, {
+        title: 'Blocked page',
+        summary: '',
+        highlights: [{ id: 'b', text: 'Blocked line', comment: '', pos: 1, createdAt: 1 }],
+      });
+      await seed(otherFileUrl, { title: 'Other note', summary: 'Other summary', highlights: [] });
+      const panel = await openPanel(new URLSearchParams({ url: blockedUrl, title: 'Blocked page' }));
       await expect(panel.locator('#title')).toHaveText('Blocked page');
       await installClipboard(panel, 'reject');
       const downloads = await armCopyWatch(panel);
@@ -269,7 +291,7 @@ for (const [tag, copy] of Object.entries(COPY)) {
       const error = panel.locator('#export-error');
       await expect(error).toBeVisible();
       await expect(error).toHaveText(copy.failed);
-      await panel.waitForTimeout(1700);
+      await panel.waitForTimeout(5200);
       await expect(exportBtn).toHaveText(copy.retry);
       await expect(error).toBeVisible();
       expect(errors).toEqual([]);
@@ -287,7 +309,13 @@ for (const [tag, copy] of Object.entries(COPY)) {
     });
 
     test('a rejected save promise does not claim success', async () => {
-      const panel = await openPanel(new URLSearchParams({ url: `${fixture.url}?case=storage-${tag}`, title: 'Storage page' }));
+      const storageUrl = `${fixture.url}?case=storage-${tag}`;
+      await seed(storageUrl, {
+        title: 'Storage page',
+        summary: '',
+        highlights: [{ id: 's', text: 'Stored line', comment: '', pos: 1, createdAt: 1 }],
+      });
+      const panel = await openPanel(new URLSearchParams({ url: storageUrl, title: 'Storage page' }));
       await expect(panel.locator('#title')).toHaveText('Storage page');
       await panel.evaluate(() => {
         window.__whnUnhandled = 0;

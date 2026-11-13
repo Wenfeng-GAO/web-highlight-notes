@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Markdown 格式</title><link rel="stylesheet" href="style.css">
+<style>pre{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;overflow:auto;white-space:pre;line-height:1.5} h3{margin-top:28px}</style>
+</head>
+<body>
+<header><h1>Markdown 格式</h1><p>当前侧栏「复制 Markdown」所用的格式。本页不改变输出。</p></header>
+<nav><a href="index.html">使用手册</a><a href="privacy/">Privacy / 隐私政策</a></nav>
+<main>
+<p>侧栏只在有正文时复制。正文是：摘要去掉首尾空白后还有字符，或者至少有一条划线。标题和 URL 不算正文。两者都没有时，按钮禁用，不写剪贴板，也不显示「已复制 ✓」。</p>
+<p lang="en">The side panel copies only when there is body text: the summary is non-empty after trim, or there is at least one highlight. The title and URL are not body text. Otherwise the button stays disabled, nothing is written to the clipboard, and the control does not show success.</p>
+<p>下面的示例是复制成功时剪贴板里的完整字符串，包含末尾换行。中文界面用中文小标题，英文界面只更换这四个标签，结构相同。</p>
+<ul>
+<li>中文：<code>来源：</code>、<code>摘要</code>、<code>划线</code>、<code>评论：</code></li>
+<li>English: <code>Source: </code> (with a trailing space), <code>Summary</code>, <code>Highlights</code>, <code>Note: </code> (with a trailing space)</li>
+</ul>
+
+<h2>不转义</h2>
+<p>标题、URL、摘要、划线、评论都按原字符写入。<code>#</code>、<code>*</code>、<code>_</code>、<code>[文字](网址)</code>、<code>&gt;</code> 都不会加反斜杠。</p>
+<p>划线里的换行拆成多行，每一行前面加 <code>&gt; </code>（大于号加一个空格）。空行也是 <code>&gt; </code>。摘要和评论里的换行保持原样，不会变成引用。</p>
+<p>评论先去掉首尾空白。去掉之后如果是空的，整行评论省略。评论中间的换行留在同一条评论里。</p>
+<p>示例里的日期只是示例，例如 <code>2026-11-13</code> 和 <code>2026-10-15</code>。实际复制时，日期是复制当时的本地日历日，格式为 <code>YYYY-MM-DD</code>。URL 是这条笔记的页面键。</p>
+
+<h3>转义、换行、标题、URL、引用、评论、摘要</h3>
+<pre># 标题 *不是* 转义
+来源：https://example.com/a?q=1 · 2026-11-13
+## 摘要
+摘要第一行
+摘要第二行，保留 *星号* 与 [链接](https://example.com)。
+## 划线
+&gt; 第一行
+&gt; 
+&gt; 第三行 &gt; 原样
+&gt; 引用
+评论：评论一行
+评论第二行
+</pre>
+<p>对应输入：标题 <code>标题 *不是* 转义</code>；摘要两行，第二行含 <code>*星号*</code> 和 <code>[链接](https://example.com)。</code>；第一条划线是 <code>第一行</code>、空行、<code>第三行 &gt; 原样</code>，评论只有空白，所以没有评论行；第二条划线是 <code>引用</code>，评论是 <code>评论一行</code> 换行 <code>评论第二行</code>。</p>
+
+<h3>只有摘要</h3>
+<p>划线数组为空时，划线小标题仍在，下面没有引用。</p>
+<pre># Only summary
+来源：https://example.com/s · 2026-11-13
+## 摘要
+正文摘要
+## 划线
+</pre>
+
+<h3>只有划线</h3>
+<p>摘要为空时，摘要小标题仍在，下一行是空行，然后才是划线。</p>
+<pre># Only highlight
+来源：https://example.com/h · 2026-11-13
+## 摘要
+
+## 划线
+&gt; 仅划线
+评论：一条评论
+</pre>
+
+<h3>英文标签</h3>
+<pre># T
+Source: https://example.com/a · 2026-10-15
+## Summary
+S
+## Highlights
+&gt; quote
+Note: note
+</pre>
+
+<h2>空态</h2>
+<p>没有记录，或者有记录但划线为 0 且摘要去掉首尾空白后为空（包括纯空白摘要）：侧栏不复制。标题和 URL 不算正文。因此剪贴板里不会出现「只有标题、来源和两个空章节」的文档。空正文是按钮禁用，不是另一份 Markdown。复制成功的样本以上面四段为准。</p>
+</main>
+<footer>Web Highlight Notes · <a href="index.html">使用手册</a></footer>
+</body></html>

@@ -21,6 +21,7 @@ const CASES = [
     highlight: '划线',
     exportLabel: '复制 Markdown',
     copied: '已复制 ✓',
+    unavailable: '此页面没有可复制的内容。',
     counts0: '0 条划线 · 0 条评论',
     counts1: '1 条划线 · 0 条评论',
     source: '来源：',
@@ -32,6 +33,7 @@ const CASES = [
     highlight: 'Highlight',
     exportLabel: 'Copy Markdown',
     copied: 'Copied ✓',
+    unavailable: 'There is nothing to copy on this page.',
     counts0: '0 highlights · 0 notes',
     counts1: '1 highlight · 0 notes',
     source: 'Source: ',
@@ -121,9 +123,13 @@ for (const c of CASES) {
       await panel.bringToFront();
       await panel.screenshot({ path: path.join(artifacts, `spa-title-page-b-${c.tag}.png`) });
 
-      const markdown = await readCopiedMarkdown(panel, { button: c.exportLabel, copied: c.copied });
-      expect(markdown.startsWith('# SPA /spa/b\n')).toBe(true);
-      expect(markdown).toContain(`${c.source}${origin}/spa/b`);
+      // Page B has a title and URL, and no summary or highlight. That is not body.
+      const exportBtn = panel.locator('#export');
+      await expect(exportBtn).toBeDisabled();
+      await expect(exportBtn).toHaveText(c.exportLabel);
+      await expect(panel.locator('#export-hint')).toHaveText(c.unavailable);
+      await exportBtn.click({ force: true });
+      await expect(exportBtn).not.toHaveText(c.copied);
 
       // No delay: the view renames the document in the same turn as pushState.
       await page.bringToFront();
@@ -132,6 +138,9 @@ for (const c of CASES) {
       await expect(page).toHaveURL(/\/spa\/a$/);
       await expect(panel.locator('#title')).toHaveText('SPA /spa/a', { timeout: 1500 });
       await expect(panel.locator('#counts')).toHaveText(c.counts1);
+      const markdown = await readCopiedMarkdown(panel, { button: c.exportLabel, copied: c.copied });
+      expect(markdown.startsWith('# SPA /spa/a\n')).toBe(true);
+      expect(markdown).toContain(`${c.source}${origin}/spa/a`);
 
       // Back button. Page B has no saved notes, and its title arrives 800ms after popstate.
       await page.evaluate(() => { sessionStorage.delay = '800'; });
