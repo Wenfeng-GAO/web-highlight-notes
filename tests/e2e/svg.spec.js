@@ -271,9 +271,16 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
   await highlightBtn(page).click();
   await expect(page.locator('svg[aria-label="失败场景"] rect.whn-svg-hl')).toHaveCount(1);
   expect(await page.locator(sentence).evaluate((node) => node.outerHTML)).toBe(sentenceBefore);
-  const tspanCovered = await page.locator('svg[aria-label="失败场景"] rect.whn-svg-hl').evaluate((rect) => {
-    const a = rect.getBoundingClientRect();
-    const b = document.querySelector('svg[aria-label="失败场景"] tspan').getBoundingClientRect();
+  // Fixture limit: one <tspan> on one line, and exactly one rect. Horizontal
+  // only (left, right, width); top and bottom are not checked. Expected is the
+  // selected character Range, with the same 1px edges and width < selection + 4.
+  const tspanCovered = await page.locator(sentence).evaluate((text) => {
+    const node = text.querySelector('tspan').firstChild;
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, node.nodeValue.length);
+    const a = text.ownerSVGElement.querySelector('rect.whn-svg-hl').getBoundingClientRect();
+    const b = range.getBoundingClientRect();
     return a.left <= b.left + 1 && a.right >= b.right - 1 && a.width < b.width + 4;
   });
   expect(tspanCovered).toBe(true);
@@ -283,6 +290,97 @@ test('acceptance 1+2: highlight an SVG label natively, comment on it, and it sur
   await highlightBtn(page).click();
   await expect(page.locator('.key span.whn-hl')).toHaveText('控制面只有在');
   expect((await stored(key)).highlights.map((item) => item.text)).toEqual(['控制面只有在', LABEL, '存疑']);
+});
+
+test('tspan mark matches the selected character range at 1280 and 900', async () => {
+  // Fixture limit: svg-diagrams.html has one <tspan> ("存疑") on one line,
+  // then the unselected text "（Q2）". This test requires exactly one product
+  // rect. The predicate is horizontal only; vertical edges are not covered.
+  // shifted, narrowed, and widened clone that rect and must make the predicate
+  // false. expect(pass).toBe(false) stays a passing test.
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'whn-tspan-range-'));
+  const local = await launch(root, profile);
+  try {
+    const page = local.ctx.pages()[0] || await local.ctx.newPage();
+    for (const [width, file] of [[1280, 'svg-diagrams.html'], [900, 'svg-diagrams-new.html']]) {
+      await page.setViewportSize({ width, height: 800 });
+      await open(page, docUrl(file));
+      await select(page, 'svg[aria-label="失败场景"] text:has(tspan)', '存疑');
+      await highlightBtn(page).click();
+      await expect(page.locator('svg[aria-label="失败场景"] rect.whn-svg-hl')).toHaveCount(1);
+      const clip = await page.locator('svg[aria-label="失败场景"] text:has(tspan)').evaluate((text) => {
+        const r = text.getBoundingClientRect();
+        const pad = 8;
+        const x = Math.max(0, r.left - pad);
+        const y = Math.max(0, r.top - pad);
+        return {
+          x,
+          y,
+          width: Math.min(r.width + pad * 2, window.innerWidth - x),
+          height: Math.min(r.height + pad * 2, window.innerHeight - y),
+        };
+      });
+      await page.screenshot({ path: path.join(shotDir, `tspan-range-${width}.png`), clip });
+      const verdict = await page.evaluate(() => {
+        const svg = document.querySelector('svg[aria-label="失败场景"]');
+        const tspan = svg.querySelector('tspan');
+        const node = tspan.firstChild;
+        const range = document.createRange();
+        range.setStart(node, 0);
+        range.setEnd(node, node.nodeValue.length);
+        const selected = range.getBoundingClientRect();
+        const element = tspan.getBoundingClientRect();
+        const live = svg.querySelector('rect.whn-svg-hl');
+        const mark = live.getBoundingClientRect();
+        const neighbor = tspan.nextSibling;
+        const neighborRange = document.createRange();
+        neighborRange.setStart(neighbor, 0);
+        neighborRange.setEnd(neighbor, neighbor.nodeValue.length);
+        const adjacent = neighborRange.getBoundingClientRect();
+        const pass = (a, b) => a.left <= b.left + 1 && a.right >= b.right - 1 && a.width < b.width + 4;
+        const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+        function ghost(dx, dw) {
+          const probe = live.cloneNode();
+          probe.setAttribute('data-probe', '1');
+          probe.setAttribute('x', String(Number(live.getAttribute('x')) + dx / scale));
+          probe.setAttribute('width', String(Number(live.getAttribute('width')) + dw / scale));
+          live.parentNode.appendChild(probe);
+          const a = probe.getBoundingClientRect();
+          const result = {
+            pass: pass(a, selected),
+            leftDelta: a.left - selected.left,
+            rightDelta: a.right - selected.right,
+            markWidth: a.width,
+            selectedWidth: selected.width,
+            adjacentOverlap: Math.min(a.right, adjacent.right) - Math.max(a.left, adjacent.left),
+          };
+          probe.remove();
+          return result;
+        }
+        return {
+          rangePass: pass(mark, selected),
+          oldElementPass: pass(mark, element),
+          rangeLeftDelta: mark.left - selected.left,
+          elementLeftDelta: mark.left - element.left,
+          shifted: ghost(3, 0),
+          narrowed: ghost(0, -8),
+          widened: ghost(0, 40),
+        };
+      });
+      console.log(`tspan-viewport ${width} ${JSON.stringify(verdict)}`);
+      expect(verdict.rangePass, `selected range at ${width}`).toBe(true);
+      expect(verdict.shifted.pass, `shifted rect at ${width}`).toBe(false);
+      expect(verdict.shifted.leftDelta, `shifted left at ${width}`).toBeGreaterThan(1);
+      expect(verdict.narrowed.pass, `narrow rect at ${width}`).toBe(false);
+      expect(verdict.narrowed.rightDelta, `narrow right at ${width}`).toBeLessThan(-1);
+      expect(verdict.widened.pass, `wide rect at ${width}`).toBe(false);
+      expect(verdict.widened.adjacentOverlap, `wide overlap at ${width}`).toBeGreaterThan(1);
+      expect(verdict.widened.markWidth, `wide width at ${width}`).toBeGreaterThanOrEqual(verdict.widened.selectedWidth + 4);
+    }
+  } finally {
+    await local.ctx.close();
+    fs.rmSync(profile, { recursive: true, force: true });
+  }
 });
 
 test('sweep: textPath, per-glyph rotate and MathML get no toolbar; a transform on the text itself draws', async () => {
