@@ -12,7 +12,7 @@ import { chromeLocaleEnv } from './native.js';
 import { pageKey } from '../../src/lib/url.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const outDir = process.env.WHN_PASTE_OUT || '/cursor/stores/self/pr38-paste-3531b708';
+const outDir = process.env.WHN_PASTE_OUT || path.join(root, 'test-results', 'export-paste-probe');
 
 const labels = { source: '来源：', summary: '摘要', highlights: '划线', comment: '评论：' };
 

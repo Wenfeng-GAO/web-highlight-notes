@@ -14,8 +14,9 @@ import { pageKey } from '../../src/lib/url.js';
 import { armDownloadWatch, assertDownloadWatchLive, assertNoDownload } from './read-copy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const shotDir = process.env.WHN_NATIVE_SHOTS || '/cursor/stores/self/pr38-paste-3531b708/shots';
-const readbackPath = process.env.WHN_NATIVE_READBACK || '/cursor/stores/self/pr38-paste-3531b708/readback.json';
+const evidenceDir = path.join(root, 'test-results', 'export-copy-native');
+const shotDir = process.env.WHN_NATIVE_SHOTS || path.join(evidenceDir, 'shots');
+const readbackPath = process.env.WHN_NATIVE_READBACK || path.join(evidenceDir, 'readback.json');
 
 const COPY = {
   zh: {
